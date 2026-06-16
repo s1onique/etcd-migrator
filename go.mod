@@ -2,7 +2,10 @@ module github.com/spbnix/etcd-migrator
 
 go 1.25.0
 
-require go.etcd.io/etcd/client/v3 v3.6.12
+require (
+	github.com/lib/pq v1.10.9
+	go.etcd.io/etcd/client/v3 v3.6.12
+)
 
 require (
 	github.com/coreos/go-semver v0.3.1 // indirect

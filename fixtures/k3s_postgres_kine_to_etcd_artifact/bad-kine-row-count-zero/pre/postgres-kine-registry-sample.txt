@@ -1,0 +1,4 @@
+                          name                                   
+----------------------------------------------------------------------
+ /registry/apiregistration.k8s.io/apiservices/v1.
+(1 row)

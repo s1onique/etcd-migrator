@@ -1,0 +1,9 @@
+                          name                                   
+----------------------------------------------------------------------
+ /registry/apiregistration.k8s.io/apiservices/v1.
+ /registry/configmaps/migrator-lab/cm-alpha
+ /registry/namespaces/migrator-lab
+ /registry/secrets/migrator-lab/secret-alpha
+ /registry/serviceaccounts/migrator-lab/sa-alpha
+ /registry/deployments.apps/migrator-lab/deploy-alpha
+(6 rows)

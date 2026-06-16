@@ -43,6 +43,19 @@ func WriteRecord(w io.Writer, r Record) error {
 	return nil
 }
 
+// ReadAllRecords reads all JSONL records from r and returns them as a slice.
+func ReadAllRecords(r io.Reader) ([]Record, error) {
+	var records []Record
+	err := ReadRecords(r, func(rec Record) error {
+		records = append(records, rec)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
 // ReadRecords reads JSONL records from r, calling visit for each record.
 // It processes line-by-line and fails on the first malformed record.
 // The visit function may return an error to stop iteration early.

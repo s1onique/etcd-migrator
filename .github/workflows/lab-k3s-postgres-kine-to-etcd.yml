@@ -1,0 +1,119 @@
+name: Lab - k3s PostgreSQL/Kine to etcd migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      k3s_channel:
+        description: "k3s install channel"
+        required: true
+        default: "stable"
+        type: choice
+        options:
+          - stable
+          - latest
+      etcd_version:
+        description: "Standalone etcd release"
+        required: true
+        default: "v3.5.21"
+      upload_raw_artifacts:
+        description: "Upload raw migration artifacts (sensitive)"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lab-k3s-postgres-kine-to-etcd
+  cancel-in-progress: false
+
+jobs:
+  lab:
+    name: k3s PostgreSQL/Kine to standalone etcd migration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install PostgreSQL client
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client >/dev/null 2>&1
+
+      - name: Build etcd-migrator
+        run: |
+          set -euo pipefail
+          go build -o bin/etcd-migrator ./cmd/etcd-migrator
+          ./bin/etcd-migrator version
+          ./bin/etcd-migrator --help
+
+      - name: Run k3s PostgreSQL/Kine to etcd migration lab
+        env:
+          K3S_CHANNEL: ${{ inputs.k3s_channel }}
+          ETCD_VERSION: ${{ inputs.etcd_version }}
+        run: |
+          set -euo pipefail
+          sudo --preserve-env=K3S_CHANNEL,ETCD_VERSION \
+            bash scripts/lab_k3s_postgres_kine_to_etcd.sh
+
+      - name: Find lab directory
+        id: find-lab
+        run: |
+          set -euo pipefail
+          lab_dir="$(find runs -maxdepth 1 -type d -name 'lab-k3s-postgres-kine-to-etcd-*' | sort | tail -1)"
+          if [[ -z "$lab_dir" ]]; then
+            echo "ERROR: No lab directory found" >&2
+            exit 1
+          fi
+          echo "lab_dir=$lab_dir" >> "$GITHUB_OUTPUT"
+          artifact_dir="$lab_dir/artifacts"
+          echo "artifact_dir=$artifact_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Verify lab artifacts
+        run: |
+          set -euo pipefail
+          artifact_dir="${{ steps.find-lab.outputs.artifact_dir }}"
+          echo "Verifying artifacts in: $artifact_dir"
+          bash scripts/verify_k3s_postgres_kine_to_etcd_artifact.sh "$artifact_dir"
+
+      - name: Safety scan artifacts
+        run: |
+          set -euo pipefail
+          artifact_dir="${{ steps.find-lab.outputs.artifact_dir }}"
+          if [[ -f scripts/verify_lab_artifact_safety.sh ]]; then
+            bash scripts/verify_lab_artifact_safety.sh "$artifact_dir"
+          else
+            echo "Safety scanner not found, skipping"
+          fi
+
+      - name: Upload safe lab evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k3s-postgres-kine-to-etcd-lab
+          path: |
+            runs/lab-k3s-postgres-kine-to-etcd-*/artifacts/**/*.txt
+            runs/lab-k3s-postgres-kine-to-etcd-*/artifacts/**/*.yaml
+            runs/lab-k3s-postgres-kine-to-etcd-*/artifacts/**/*.json
+            runs/lab-k3s-postgres-kine-to-etcd-*/artifacts/**/*.md
+          if-no-files-found: warn
+
+      - name: Upload raw lab artifacts (opt-in)
+        if: always() && inputs.upload_raw_artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: k3s-postgres-kine-to-etcd-raw
+          path: |
+            runs/lab-k3s-postgres-kine-to-etcd-*/work/**/*
+            runs/lab-k3s-postgres-kine-to-etcd-*/bin/**/*
+          if-no-files-found: warn

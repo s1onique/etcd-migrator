@@ -1,0 +1,9 @@
+{
+  "migration_prefix": "/registry/",
+  "namespace_visible": true,
+  "configmap_visible": true,
+  "secret_metadata_visible": true,
+  "serviceaccount_visible": true,
+  "deployment_visible": true,
+  "run_id": "20260101T000000Z"
+}
