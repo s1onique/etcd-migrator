@@ -1,10 +1,14 @@
-.PHONY: test gate fmt-check vet build clean
+.PHONY: test gate fmt-check vet build clean lab-k3s-etcd-cold-import
 
 test:
 	go test ./...
 
 gate: vet fmt-check test
 	@echo "✓ Quality gate passed"
+
+lab-k3s-etcd-cold-import:
+	@echo "This lab requires root because k3s installs system services."
+	@echo "Run: sudo bash scripts/lab_k3s_etcd_cold_import.sh"
 
 vet:
 	go vet ./...

@@ -1,0 +1,89 @@
+name: Lab - k3s etcd cold import
+
+on:
+  workflow_dispatch:
+    inputs:
+      k3s_channel:
+        description: "k3s install channel"
+        required: true
+        default: "stable"
+        type: choice
+        options:
+          - stable
+          - latest
+      etcd_version:
+        description: "Standalone etcd release"
+        required: true
+        default: "v3.5.21"
+      object_count:
+        description: "Synthetic Kubernetes object count per namespace"
+        required: true
+        default: "20"
+      upload_raw_etcd_artifacts:
+        description: "Dangerous: upload raw etcd snapshot/dumps containing Kubernetes Secrets"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lab-k3s-etcd-cold-import
+  cancel-in-progress: false
+
+jobs:
+  lab:
+    name: k3s embedded etcd to standalone etcd cold import
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build migrator
+        run: |
+          set -euo pipefail
+          go build -o bin/etcd-migrator ./cmd/etcd-migrator
+          ./bin/etcd-migrator --help || true
+
+      - name: Run k3s etcd cold-import lab
+        env:
+          K3S_CHANNEL: ${{ inputs.k3s_channel }}
+          ETCD_VERSION: ${{ inputs.etcd_version }}
+          OBJECT_COUNT: ${{ inputs.object_count }}
+          UPLOAD_RAW_ETCD_ARTIFACTS: ${{ inputs.upload_raw_etcd_artifacts }}
+        run: |
+          set -euo pipefail
+          sudo --preserve-env=K3S_CHANNEL,ETCD_VERSION,OBJECT_COUNT,UPLOAD_RAW_ETCD_ARTIFACTS \
+            bash scripts/lab_k3s_etcd_cold_import.sh
+
+      - name: Upload safe lab evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k3s-etcd-cold-import-lab
+          path: |
+            runs/lab-k3s-etcd-cold-import-*/artifacts/**
+            !runs/lab-k3s-etcd-cold-import-*/artifacts/**/*.db
+            !runs/lab-k3s-etcd-cold-import-*/artifacts/**/*snapshot*
+            !runs/lab-k3s-etcd-cold-import-*/artifacts/**/*dump*
+          if-no-files-found: warn
+
+      - name: Upload raw lab artifacts (opt-in)
+        if: always() && inputs.upload_raw_etcd_artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: k3s-etcd-cold-import-raw
+          path: |
+            runs/lab-k3s-etcd-cold-import-*/artifacts/**/*.db
+            runs/lab-k3s-etcd-cold-import-*/artifacts/**/*snapshot*
+            runs/lab-k3s-etcd-cold-import-*/artifacts/**/*dump*
+          if-no-files-found: warn
