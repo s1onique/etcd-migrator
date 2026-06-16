@@ -110,7 +110,7 @@ See [docs/doctrine/safety-boundaries.md](docs/doctrine/safety-boundaries.md) for
 
 ### Prerequisites
 
-- Go 1.22+
+- Go 1.25.0+ (required by go.etcd.io/etcd/client/v3)
 - etcd v3 client (go.etcd.io/etcd/client/v3)
 
 ### Quality Gates
