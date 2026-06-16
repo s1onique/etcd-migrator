@@ -60,9 +60,18 @@ etcd-migrator enables cutover from Kine+PostgreSQL to a real etcd cluster.
 ### Sprint 4: Verification
 
 - [ ] Implement dump-vs-target verifier
-- [ ] Add inspect command for dump analysis
+- [x] Add inspect command for dump analysis
 - [ ] Compute digest from live etcd
 - [ ] Compare digests with detailed diff
+
+### Local Artifact Tooling
+
+- [x] `inspect-dump`: Read-only dump analysis without etcd connection
+  - Validates JSONL records (base64 key/value decoding)
+  - Collects stats: count, bytes, lease count, revision ranges
+  - Computes deterministic digest for consistency verification
+  - Reports migration-risk metadata (lease-bearing records)
+  - Command: `etcd-migrator inspect --input dump.jsonl`
 
 ### Future: Production Hardening
 

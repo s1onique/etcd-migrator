@@ -11,6 +11,7 @@ import (
 
 	"github.com/spbnix/etcd-migrator/internal/etcdsource"
 	"github.com/spbnix/etcd-migrator/internal/etcdtarget"
+	"github.com/spbnix/etcd-migrator/internal/inspect"
 	"github.com/spbnix/etcd-migrator/internal/version"
 )
 
@@ -32,6 +33,12 @@ func main() {
 		return
 	case "load":
 		if err := runLoad(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	case "inspect":
+		if err := runInspect(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
@@ -200,5 +207,49 @@ func runLoad(args []string) error {
 	fmt.Fprintf(os.Stderr, "bytes:  %d\n", stats.Bytes)
 	fmt.Fprintf(os.Stderr, "prefix: %s\n", stats.Prefix)
 	fmt.Fprintf(os.Stderr, "digest: %s\n", stats.Digest)
+	return nil
+}
+
+func runInspect(args []string) error {
+	fs := flag.NewFlagSet("inspect", flag.ContinueOnError)
+
+	var input string
+
+	fs.StringVar(&input, "input", "", "input JSONL file (required)")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if input == "" {
+		return errors.New("missing --input")
+	}
+
+	f, err := os.Open(input)
+	if err != nil {
+		return fmt.Errorf("open input: %w", err)
+	}
+	defer f.Close()
+
+	stats, err := inspect.InspectDump(f)
+	if err != nil {
+		return fmt.Errorf("inspect: %w", err)
+	}
+
+	// Print report to stdout
+	fmt.Printf("records:               %d\n", stats.Count)
+	fmt.Printf("key bytes:             %d\n", stats.KeyBytes)
+	fmt.Printf("value bytes:           %d\n", stats.ValueBytes)
+	fmt.Printf("total bytes:           %d\n", stats.TotalBytes)
+	fmt.Printf("lease-bearing records: %d\n", stats.LeaseCount)
+	fmt.Printf("create revision range: %d - %d\n", stats.MinCreateRevision, stats.MaxCreateRevision)
+	fmt.Printf("mod revision range:    %d - %d\n", stats.MinModRevision, stats.MaxModRevision)
+	fmt.Printf("digest:                %s\n", stats.Digest)
+
+	// Warn if leases are present
+	if stats.LeaseCount > 0 {
+		fmt.Fprintf(os.Stderr, "warning: %d records have lease IDs recorded; leases are not restored by load\n", stats.LeaseCount)
+	}
+
 	return nil
 }
