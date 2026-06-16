@@ -43,18 +43,19 @@ etcd-migrator enables cutover from Kine+PostgreSQL to a real etcd cluster.
 
 ### Sprint 2: Source Dump
 
-- [ ] Implement etcd v3 source prefix dump
-- [ ] Add pagination by key
-- [ ] Record source metadata from mvccpb.KeyValue
-- [ ] Support plaintext and TLS connections
-- [ ] Add --source-endpoints flag
+- [x] Implement etcd v3 source prefix dump
+- [x] Add pagination by key
+- [x] Record source metadata from mvccpb.KeyValue
+- [x] Support plaintext source endpoint
+- [ ] Support TLS/auth flags
+- [x] Add --source-endpoints flag
 
 ### Sprint 3: Target Load
 
-- [ ] Implement empty-target guarded load
-- [ ] Add --target-endpoints flag
-- [ ] Stream writes to target
-- [ ] Verify target is empty before starting
+- [x] Implement empty-target guarded load
+- [x] Add --target-endpoints flag
+- [x] Two-phase validate-then-batched-write load
+- [x] Verify target is empty before starting
 
 ### Sprint 4: Verification
 

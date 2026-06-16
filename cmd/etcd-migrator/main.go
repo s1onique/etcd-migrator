@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/spbnix/etcd-migrator/internal/etcdsource"
+	"github.com/spbnix/etcd-migrator/internal/etcdtarget"
 	"github.com/spbnix/etcd-migrator/internal/version"
 )
 
@@ -25,6 +26,12 @@ func main() {
 		return
 	case "dump":
 		if err := runDump(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	case "load":
+		if err := runLoad(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
@@ -133,4 +140,65 @@ func removeEmpty(ss []string) []string {
 		}
 	}
 	return out
+}
+
+func runLoad(args []string) error {
+	fs := flag.NewFlagSet("load", flag.ContinueOnError)
+
+	var targetEndpoints string
+	var input string
+	var prefix string
+	var batchSize int
+	var dialTimeout time.Duration
+	var requestTimeout time.Duration
+	var allowNonEmpty bool
+
+	fs.StringVar(&targetEndpoints, "target-endpoints", "", "comma-separated etcd endpoints (required)")
+	fs.StringVar(&input, "input", "", "input JSONL file (required)")
+	fs.StringVar(&prefix, "prefix", "/registry/", "key prefix to load")
+	fs.IntVar(&batchSize, "batch-size", 100, "batch size for etcd writes")
+	fs.DurationVar(&dialTimeout, "dial-timeout", 5*time.Second, "etcd dial timeout")
+	fs.DurationVar(&requestTimeout, "request-timeout", 30*time.Second, "etcd request timeout")
+	fs.BoolVar(&allowNonEmpty, "allow-non-empty", false, "allow loading into non-empty target prefix")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	endpoints := strings.Split(targetEndpoints, ",")
+	endpoints = removeEmpty(endpoints)
+	if len(endpoints) == 0 || endpoints[0] == "" {
+		return errors.New("missing --target-endpoints")
+	}
+
+	if input == "" {
+		return errors.New("missing --input")
+	}
+
+	f, err := os.Open(input)
+	if err != nil {
+		return fmt.Errorf("open input: %w", err)
+	}
+	defer f.Close()
+
+	cfg := etcdtarget.Config{
+		Endpoints:      endpoints,
+		Prefix:         prefix,
+		BatchSize:      batchSize,
+		DialTimeout:    dialTimeout,
+		RequestTimeout: requestTimeout,
+		RequireEmpty:   !allowNonEmpty,
+	}
+
+	ctx := context.Background()
+	stats, err := etcdtarget.LoadDump(ctx, cfg, f)
+	if err != nil {
+		return fmt.Errorf("load: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "count:  %d\n", stats.Count)
+	fmt.Fprintf(os.Stderr, "bytes:  %d\n", stats.Bytes)
+	fmt.Fprintf(os.Stderr, "prefix: %s\n", stats.Prefix)
+	fmt.Fprintf(os.Stderr, "digest: %s\n", stats.Digest)
+	return nil
 }
