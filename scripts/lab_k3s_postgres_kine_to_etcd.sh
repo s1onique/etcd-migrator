@@ -312,6 +312,14 @@ collect_pre_migration_evidence() {
     -c "select name from kine where name like '/registry/%' order by name limit 50;" \
     > "$ARTIFACTS_PRE/postgres-kine-registry-sample.txt" 2>&1
 
+  # Phase 6a: Capture duplicate key count in raw Kine table.
+  # This is typically > 0 in real Kine (update history), which is fine.
+  # The important postcondition is that the dump has unique keys.
+  log "Capturing duplicate name count in Kine (Phase 6a evidence)"
+  PGPASSWORD="${POSTGRES_PASSWORD}" psql -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" \
+    -At -c "SELECT COUNT(*) FROM (SELECT name FROM kine WHERE name LIKE '/registry/%' GROUP BY name HAVING COUNT(*) > 1) d;" \
+    > "$ARTIFACTS_PRE/postgres-kine-duplicate-name-count.txt" 2>&1
+
   log "Pre-migration evidence collected"
 }
 

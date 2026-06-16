@@ -99,18 +99,35 @@ func DumpPostgres(ctx context.Context, cfg Config, w io.Writer) (*DumpStats, err
 	var allRecords []dump.Record
 	var stats DumpStats
 
+	// seen tracks keys to detect any query regression that produces duplicates.
+	// This is a fail-closed invariant: any duplicate key is a dump error,
+	// not an etcd transaction error later.
+	seen := make(map[string]struct{})
+
 	for {
-		// Kine uses: id, name, created, deleted, create_revision, prev_revision, lease, value, old_value
-		// We filter to non-deleted rows (deleted = 0)
-		// Pagination uses lastName cursor to avoid NUL-byte issues with PostgreSQL text type
+		// Kine's current-view semantics requires selecting the latest row per name
+		// FIRST (via MAX(id) GROUP BY name), then filtering deleted=0. This prevents
+		// resurrecting deleted Kubernetes objects that were replaced.
+		//
+		// The query shape mirrors Kine's own list path which uses:
+		//   SELECT MAX(id) ... GROUP BY name
+		//   JOIN ... WHERE deleted = 0 OR includeDeleted
+		//
+		// Pagination uses lastName cursor to avoid NUL-byte issues with PostgreSQL text type.
 		query := `
-			SELECT id, name, created, deleted, create_revision, prev_revision, lease, value, old_value
-			FROM kine
-			WHERE deleted = 0
-			  AND name >= $1
-			  AND name < $2
-			  AND ($3 = '' OR name > $3)
-			ORDER BY name
+			SELECT kv.id, kv.name, kv.created, kv.deleted, kv.create_revision,
+			       kv.prev_revision, kv.lease, kv.value, kv.old_value
+			FROM kine AS kv
+			JOIN (
+			  SELECT MAX(mkv.id) AS id
+			  FROM kine AS mkv
+			  WHERE mkv.name >= $1
+			    AND mkv.name < $2
+			    AND ($3 = '' OR mkv.name > $3)
+			  GROUP BY mkv.name
+			) AS latest USING (id)
+			WHERE kv.deleted = 0
+			ORDER BY kv.name
 			LIMIT $4
 		`
 
@@ -147,6 +164,13 @@ func DumpPostgres(ctx context.Context, cfg Config, w io.Writer) (*DumpStats, err
 			if len(keyStr) >= 8 && keyStr[len(keyStr)-8:] == "/compact" {
 				continue
 			}
+
+			// Fail-closed invariant: the SQL dedup should prevent duplicates,
+			// but this guards against any future query regression.
+			if _, ok := seen[keyStr]; ok {
+				return nil, fmt.Errorf("duplicate live Kine key selected: %s", keyStr)
+			}
+			seen[keyStr] = struct{}{}
 
 			// Use dump.NewRecord to create properly base64-encoded records
 			// Kine doesn't preserve mod_revision or version in PostgreSQL, so we use
