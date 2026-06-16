@@ -26,6 +26,9 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "--help", "-h", "help":
+		printUsage()
+		return
 	case "version", "--version", "-v":
 		fmt.Println(version.String())
 		return
