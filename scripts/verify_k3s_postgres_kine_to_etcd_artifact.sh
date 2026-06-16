@@ -81,26 +81,35 @@ verify_artifact_dir() {
     fi
   fi
 
-  # 2. Check kine registry sample exists
+  # 2. Check kine registry sample exists (kept as debugging artifact)
   if [[ ! -f "$artifact_dir/pre/postgres-kine-registry-sample.txt" ]]; then
-    err "Missing required file: pre/postgres-kine-registry-sample.txt"
+    warn "Optional file not present: pre/postgres-kine-registry-sample.txt (may be expected if LAB_ROOT not set)"
+  else
+    info "kine registry sample file present (optional, for debugging)"
+  fi
+
+  # 3. Check exact current-view Kine proof exists
+  # This uses fixed-dump semantics: latest row per name, then deleted = 0.
+  # This avoids the bounded-sample bug where keys beyond position 50 are invisible.
+  expected_keys_file="$artifact_dir/pre/postgres-kine-expected-keys.txt"
+  if [[ ! -f "$expected_keys_file" ]]; then
+    err "Missing required file: pre/postgres-kine-expected-keys.txt"
     failures=$((failures + 1))
   else
-    # 3. Check sample contains /registry/namespaces/migrator-lab
-    if ! grep -q '/registry/namespaces/migrator-lab' "$artifact_dir/pre/postgres-kine-registry-sample.txt" 2>/dev/null; then
-      err "kine registry sample does not contain /registry/namespaces/migrator-lab"
-      failures=$((failures + 1))
-    else
-      info "kine registry sample contains namespace (PASS)"
-    fi
-
-    # 4. Check sample contains /registry/configmaps/migrator-lab/cm-alpha
-    if ! grep -q '/registry/configmaps/migrator-lab/cm-alpha' "$artifact_dir/pre/postgres-kine-registry-sample.txt" 2>/dev/null; then
-      err "kine registry sample does not contain /registry/configmaps/migrator-lab/cm-alpha"
-      failures=$((failures + 1))
-    else
-      info "kine registry sample contains configmap (PASS)"
-    fi
+    for expected_key in \
+      "/registry/namespaces/migrator-lab" \
+      "/registry/configmaps/migrator-lab/cm-alpha" \
+      "/registry/secrets/migrator-lab/secret-alpha" \
+      "/registry/serviceaccounts/migrator-lab/sa-alpha" \
+      "/registry/deployments.apps/migrator-lab/deploy-alpha"
+    do
+      if ! grep -Fxq "$expected_key" "$expected_keys_file"; then
+        err "Kine current-view proof missing expected key: $expected_key"
+        failures=$((failures + 1))
+      else
+        info "Kine current-view proof contains $expected_key (PASS)"
+      fi
+    done
   fi
 
   # =====================================================================

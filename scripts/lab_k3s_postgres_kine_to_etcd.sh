@@ -312,6 +312,34 @@ collect_pre_migration_evidence() {
     -c "select name from kine where name like '/registry/%' order by name limit 50;" \
     > "$ARTIFACTS_PRE/postgres-kine-registry-sample.txt" 2>&1
 
+  # Collect exact current-view Kine proof using fixed-dump semantics:
+  # latest row per name, then deleted = 0. This avoids the bounded sample bug
+  # where keys beyond position 50 are invisible even when they exist.
+  PGPASSWORD="${POSTGRES_PASSWORD}" psql \
+    -h "${POSTGRES_HOST}" \
+    -p "${POSTGRES_PORT}" \
+    -U "${POSTGRES_USER}" \
+    -d "${POSTGRES_DB}" \
+    -At -c "
+WITH latest AS (
+  SELECT MAX(id) AS id
+  FROM kine
+  WHERE name IN (
+    '/registry/namespaces/migrator-lab',
+    '/registry/configmaps/migrator-lab/cm-alpha',
+    '/registry/secrets/migrator-lab/secret-alpha',
+    '/registry/serviceaccounts/migrator-lab/sa-alpha',
+    '/registry/deployments.apps/migrator-lab/deploy-alpha'
+  )
+  GROUP BY name
+)
+SELECT kv.name
+FROM kine kv
+JOIN latest USING (id)
+WHERE kv.deleted = 0
+ORDER BY kv.name;
+" > "$ARTIFACTS_PRE/postgres-kine-expected-keys.txt" 2>&1
+
   # Phase 6a: Capture duplicate key count in raw Kine table.
   # This is typically > 0 in real Kine (update history), which is fine.
   # The important postcondition is that the dump has unique keys.
