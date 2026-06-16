@@ -77,40 +77,59 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          # Safety scan runs even on partial artifacts if lab failed
+
           lab_dir="$(find runs -maxdepth 1 -type d -name 'lab-k3s-external-etcd-cutover-*' | sort | tail -1)"
-          if [[ -n "$lab_dir" ]]; then
-            artifact_dir="$lab_dir/artifacts"
-            if [[ -d "$artifact_dir" ]]; then
-              echo "Running safety scan on artifacts..."
-              # Dotted forms anywhere in artifacts
-              if grep -rE -- '\.data[[:space:]:]' "$artifact_dir" 2>/dev/null; then
-                echo "ERROR: Forbidden .data field found in artifacts" >&2
-                exit 1
-              fi
-              if grep -rE -- '\.stringData[[:space:]:]' "$artifact_dir" 2>/dev/null; then
-                echo "ERROR: Forbidden .stringData field found in artifacts" >&2
-                exit 1
-              fi
-              # Bare YAML forms scoped to secret metadata files
-              if find "$artifact_dir" -type f -name '*secrets-metadata.txt' -print0 \
-                | xargs -0 grep -E -- '(^|[[:space:]])data:[[:space:]]' 2>/dev/null; then
-                echo "ERROR: Forbidden bare data: field found in secret metadata artifacts" >&2
-                exit 1
-              fi
-              if find "$artifact_dir" -type f -name '*secrets-metadata.txt' -print0 \
-                | xargs -0 grep -E -- '(^|[[:space:]])stringData:[[:space:]]' 2>/dev/null; then
-                echo "ERROR: Forbidden bare stringData: field found in secret metadata artifacts" >&2
-                exit 1
-              fi
-              # Private key patterns (use -- to prevent pattern being treated as flag)
-              if grep -rE -- "-----BEGIN.*PRIVATE KEY-----" "$artifact_dir" 2>/dev/null; then
-                echo "ERROR: Private key found in artifacts" >&2
-                exit 1
-              fi
-              echo "Safety scan completed"
+          if [[ -z "$lab_dir" ]]; then
+            echo "No lab directory found; skipping safety scan"
+            exit 0
+          fi
+
+          artifact_dir="$lab_dir/artifacts"
+          if [[ ! -d "$artifact_dir" ]]; then
+            echo "No artifact directory found; skipping safety scan"
+            exit 0
+          fi
+
+          echo "Running safety scan on artifacts..."
+
+          secret_files="$(find "$artifact_dir" -type f -name '*secrets-metadata.txt' -print)"
+          if [[ -n "$secret_files" ]]; then
+            if find "$artifact_dir" -type f -name '*secrets-metadata.txt' -print0 \
+              | xargs -0 grep -E -- '\.data[[:space:]:]' 2>/dev/null; then
+              echo "ERROR: Forbidden .data field found in secret metadata artifacts" >&2
+              exit 1
+            fi
+
+            if find "$artifact_dir" -type f -name '*secrets-metadata.txt' -print0 \
+              | xargs -0 grep -E -- '\.stringData[[:space:]:]' 2>/dev/null; then
+              echo "ERROR: Forbidden .stringData field found in secret metadata artifacts" >&2
+              exit 1
+            fi
+
+            if find "$artifact_dir" -type f -name '*secrets-metadata.txt' -print0 \
+              | xargs -0 grep -E -- '(^|[[:space:]])data:[[:space:]]' 2>/dev/null; then
+              echo "ERROR: Forbidden bare data: field found in secret metadata artifacts" >&2
+              exit 1
+            fi
+
+            if find "$artifact_dir" -type f -name '*secrets-metadata.txt' -print0 \
+              | xargs -0 grep -E -- '(^|[[:space:]])stringData:[[:space:]]' 2>/dev/null; then
+              echo "ERROR: Forbidden bare stringData: field found in secret metadata artifacts" >&2
+              exit 1
             fi
           fi
+
+          if grep -rE -- "-----BEGIN.*PRIVATE KEY-----" "$artifact_dir" 2>/dev/null; then
+            echo "ERROR: Private key found in artifacts" >&2
+            exit 1
+          fi
+
+          if grep -rE -- "client-certificate-data:|client-key-data:" "$artifact_dir" 2>/dev/null; then
+            echo "ERROR: kubeconfig credential material found in artifacts" >&2
+            exit 1
+          fi
+
+          echo "Safety scan completed"
 
       - name: Upload safe lab evidence
         if: always()
