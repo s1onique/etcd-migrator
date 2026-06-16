@@ -21,6 +21,8 @@ K3S_CHANNEL="${K3S_CHANNEL:-stable}"
 ETCD_VERSION="${ETCD_VERSION:-v3.5.21}"
 OBJECT_COUNT="${OBJECT_COUNT:-20}"
 UPLOAD_RAW_ETCD_ARTIFACTS="${UPLOAD_RAW_ETCD_ARTIFACTS:-false}"
+# Must match etcd-migrator's dump/load prefix. Current migrator default is /registry/.
+MIGRATION_PREFIX="${MIGRATION_PREFIX:-/registry/}"
 
 # kubectl resolver: prefer PATH kubectl, fallback to k3s kubectl
 KUBECTL_CMD=()
@@ -45,6 +47,9 @@ kubectl_lab() {
 }
 
 mkdir -p "$ARTIFACTS" "$WORK" "$BIN"
+
+# Record migration scope for verification alignment
+printf '%s\n' "$MIGRATION_PREFIX" > "$ARTIFACTS/migration-prefix.txt"
 
 cleanup() {
   set +e
@@ -286,14 +291,16 @@ wait_etcd() {
 run_migrator() {
   log "Running etcd-migrator from restored source to empty target"
 
-  # Dump from source etcd
+  # Dump from source etcd (explicit prefix avoids implicit-default mismatch)
   ./bin/etcd-migrator dump \
     --source-endpoints="http://127.0.0.1:23790" \
+    --prefix="$MIGRATION_PREFIX" \
     --output "$WORK/source.dump.jsonl"
 
-  # Load into target etcd
+  # Load into target etcd (same prefix ensures symmetry)
   ./bin/etcd-migrator load \
     --target-endpoints="http://127.0.0.1:24790" \
+    --prefix="$MIGRATION_PREFIX" \
     --input "$WORK/source.dump.jsonl"
 
   log "Migrator completed"
@@ -302,15 +309,15 @@ run_migrator() {
 collect_compare_evidence() {
   log "Collecting source/target comparison evidence"
 
-  # Key-only comparison
+  # Key-only comparison (aligned to migration scope)
   ETCDCTL_API=3 "$BIN/etcdctl" \
     --endpoints=http://127.0.0.1:23790 \
-    get / --prefix --keys-only \
+    get "$MIGRATION_PREFIX" --prefix --keys-only \
     | sort > "$WORK/source.keys"
 
   ETCDCTL_API=3 "$BIN/etcdctl" \
     --endpoints=http://127.0.0.1:24790 \
-    get / --prefix --keys-only \
+    get "$MIGRATION_PREFIX" --prefix --keys-only \
     | sort > "$WORK/target.keys"
 
   wc -l "$WORK/source.keys" "$WORK/target.keys" \
@@ -325,13 +332,13 @@ collect_compare_evidence() {
   # Key+value hash comparison (safe: base64-encoded, not uploaded to git)
   ETCDCTL_API=3 "$BIN/etcdctl" \
     --endpoints=http://127.0.0.1:23790 \
-    get / --prefix --write-out=json \
+    get "$MIGRATION_PREFIX" --prefix --write-out=json \
     | jq -r '.kvs[] | [.key, .value] | @tsv' \
     | sort > "$WORK/source.kv.tsv"
 
   ETCDCTL_API=3 "$BIN/etcdctl" \
     --endpoints=http://127.0.0.1:24790 \
-    get / --prefix --write-out=json \
+    get "$MIGRATION_PREFIX" --prefix --write-out=json \
     | jq -r '.kvs[] | [.key, .value] | @tsv' \
     | sort > "$WORK/target.kv.tsv"
 
@@ -344,6 +351,15 @@ collect_compare_evidence() {
     kv_match=false
   fi
 
+  # Diagnostic: show non-migrated keys (key-only, safe artifact)
+  ETCDCTL_API=3 "$BIN/etcdctl" \
+    --endpoints=http://127.0.0.1:23790 \
+    get / --prefix --keys-only \
+    | sort > "$WORK/source-all.keys"
+
+  comm -23 "$WORK/source-all.keys" "$WORK/source.keys" \
+    > "$ARTIFACTS/source-non-migrated-keys.txt" || true
+
   ETCDCTL_API=3 "$BIN/etcdctl" \
     --endpoints=http://127.0.0.1:24790 \
     endpoint status --write-out=json \
@@ -352,6 +368,7 @@ collect_compare_evidence() {
   # Write comparison status JSON
   cat > "$ARTIFACTS/compare-status.json" <<JSON
 {
+  "migration_prefix": "${MIGRATION_PREFIX}",
   "keysets_match": ${keysets_match},
   "kv_match": ${kv_match},
   "run_id": "${RUN_ID}"
