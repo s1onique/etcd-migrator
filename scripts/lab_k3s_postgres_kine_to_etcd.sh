@@ -419,12 +419,15 @@ run_migrator() {
 
   # Load into target etcd
   log "Phase 6c: Loading into target etcd"
-  ./bin/etcd-migrator load \
+  if ! ./bin/etcd-migrator load \
     --target-endpoints=http://127.0.0.1:2379 \
-    --prefix "$MIGRATION_PREFIX" \
     --input "$WORK/kine.dump.jsonl" \
     --conflict-policy=fail-if-present \
-    > "$ARTIFACTS_MIGRATION/load.log" 2>&1
+    > "$ARTIFACTS_MIGRATION/load.log" 2>&1; then
+    log "FAIL: etcd-migrator load failed"
+    cat "$ARTIFACTS_MIGRATION/load.log" >&2
+    exit 1
+  fi
 
   # Compare dump to target
   log "Phase 6d: Comparing dump to target"
