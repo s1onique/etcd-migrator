@@ -53,8 +53,10 @@ jobs:
           set -eu
 
           test -x "dist/package/${BIN_NAME}"
-          file "dist/package/${BIN_NAME}"
-          "dist/package/${BIN_NAME}" --help >/dev/null 2>&1 || true
+          file "dist/package/${BIN_NAME}" | tee dist/package/file.txt
+          grep -q "ELF 64-bit" dist/package/file.txt
+          grep -Eq "x86-64|x86_64|AMD x86-64" dist/package/file.txt
+          "dist/package/${BIN_NAME}" --help >/dev/null
 
       - name: Create checksum and tarball
         run: |
