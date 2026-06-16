@@ -1,0 +1,5 @@
+NAME                       STATUS   AGE
+etcd-migrator-cutover      Active   60s
+kube-node-lease            Active   65s
+kube-public               Active   65s
+kube-system               Active   65s

@@ -1,0 +1,6 @@
+=== k3s External etcd Cutover Startup ===
+[2024-01-01T00:01:00Z] Starting k3s server with external etcd
+[2024-01-01T00:01:05Z] k3s API server started on port 6443
+[2024-01-01T00:01:10Z] Waiting for Kubernetes API to be ready
+[2024-01-01T00:01:15Z] Kubernetes API is ready
+[2024-01-01T00:01:16Z] k3s startup PASSED

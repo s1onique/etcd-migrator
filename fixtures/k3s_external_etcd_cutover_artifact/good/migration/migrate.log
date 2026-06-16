@@ -1,0 +1,6 @@
+=== Migration Phase ===
+[2024-01-01T00:00:00Z] Dumping /registry/ from source etcd
+[2024-01-01T00:00:01Z] Dump completed: 1500 records
+[2024-01-01T00:00:02Z] Loading into target etcd
+[2024-01-01T00:00:05Z] Load completed: 1500 records written
+[2024-01-01T00:00:06Z] Migration PASSED

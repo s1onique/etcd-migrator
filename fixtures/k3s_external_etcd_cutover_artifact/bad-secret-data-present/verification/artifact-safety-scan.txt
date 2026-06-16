@@ -1,0 +1,8 @@
+=== Artifact Safety Scan ===
+[INFO] Scanning for forbidden sensitive material
+[INFO] No .data fields found in secrets output
+[INFO] No .stringData fields found in secrets output
+[INFO] No token-like values detected
+[INFO] No private keys detected
+[INFO] No kubeconfig credentials detected
+[INFO] Safety scan PASSED

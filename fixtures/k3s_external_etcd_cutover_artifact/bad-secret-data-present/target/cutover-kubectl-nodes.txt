@@ -1,0 +1,2 @@
+NAME        STATUS   ROLES                  AGE   VERSION
+k3s-lab     Ready    control-plane,master   65s   v1.31.0+k3s1

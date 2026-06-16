@@ -1,0 +1,7 @@
+NAMESPACE                  NAME                          DATA   AGE
+etcd-migrator-cutover      etcd-migrator-cutover-config  1      60s
+kube-system               cilium-config                 40     65s
+kube-system               extension-apiserver-authentication 6   65s
+kube-system               kube-proxy                 0      65s
+kube-system               kubeadm-config             1      65s
+kube-system               kubelet-config-1.31        1      65s

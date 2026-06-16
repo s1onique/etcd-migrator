@@ -1,0 +1,9 @@
+{
+  "migration_prefix": "/registry/",
+  "namespace_visible": true,
+  "configmap_visible": true,
+  "secret_metadata_visible": true,
+  "crd_visible": true,
+  "custom_resource_visible": true,
+  "run_id": "test-run-id"
+}

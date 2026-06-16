@@ -1,0 +1,2 @@
+NAMESPACE                  NAME             AGE
+etcd-migrator-cutover      sample-widget    5s

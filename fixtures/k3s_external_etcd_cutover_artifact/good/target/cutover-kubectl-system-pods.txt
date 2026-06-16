@@ -1,0 +1,8 @@
+NAMESPACE     NAME                                      READY   STATUS    RESTARTS   AGE
+kube-system   cilium-xxxxx                             1/1     Running   0          65s
+kube-system   cilium-operator-xxxxx                    1/1     Running   0          65s
+kube-system   coredns-xxxxx                            1/1     Running   0          65s
+kube-system   etcd-k3s-lab                             1/1     Running   0          65s
+kube-system   kube-apiserver-k3s-lab                   1/1     Running   0          65s
+kube-system   kube-controller-manager-k3s-lab          1/1     Running   0          65s
+kube-system   kube-scheduler-k3s-lab                   1/1     Running   0          65s

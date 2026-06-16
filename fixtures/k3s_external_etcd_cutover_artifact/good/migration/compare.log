@@ -1,0 +1,6 @@
+=== Comparison Phase ===
+[2024-01-01T00:00:10Z] Comparing source vs target keysets
+[2024-01-01T00:00:11Z] Key counts: source=1500, target=1500
+[2024-01-01T00:00:12Z] Key diff: empty (no differences)
+[2024-01-01T00:00:13Z] KV hashes: source=abc123..., target=abc123...
+[2024-01-01T00:00:14Z] Comparison PASSED

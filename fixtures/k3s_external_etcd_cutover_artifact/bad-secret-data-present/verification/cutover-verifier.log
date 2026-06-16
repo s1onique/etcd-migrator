@@ -1,0 +1,4 @@
+=== Cutover Verifier Self-Test ===
+[INFO] Testing fixture: good
+[INFO] Artifact verification PASSED for: fixtures/k3s_external_etcd_cutover_artifact/good
+[PASS] (exit=0)

@@ -1,0 +1,6 @@
+{
+  "migration_prefix": "/registry/",
+  "keysets_match": true,
+  "kv_match": true,
+  "run_id": "test-run-id"
+}
