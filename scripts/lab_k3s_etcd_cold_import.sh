@@ -22,6 +22,28 @@ ETCD_VERSION="${ETCD_VERSION:-v3.5.21}"
 OBJECT_COUNT="${OBJECT_COUNT:-20}"
 UPLOAD_RAW_ETCD_ARTIFACTS="${UPLOAD_RAW_ETCD_ARTIFACTS:-false}"
 
+# kubectl resolver: prefer PATH kubectl, fallback to k3s kubectl
+KUBECTL_CMD=()
+
+resolve_kubectl() {
+  if command -v kubectl >/dev/null 2>&1; then
+    KUBECTL_CMD=("$(command -v kubectl)")
+    return 0
+  fi
+
+  if [[ -x /usr/local/bin/k3s ]]; then
+    KUBECTL_CMD=("/usr/local/bin/k3s" "kubectl")
+    return 0
+  fi
+
+  echo "missing kubectl: neither kubectl nor k3s kubectl is available" >&2
+  exit 1
+}
+
+kubectl_lab() {
+  "${KUBECTL_CMD[@]}" "$@"
+}
+
 mkdir -p "$ARTIFACTS" "$WORK" "$BIN"
 
 cleanup() {
@@ -88,10 +110,12 @@ install_k3s() {
     sh -
 
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  resolve_kubectl
 
+  log "Using kubectl: ${KUBECTL_CMD[*]}"
   log "Waiting for k3s node readiness"
-  /usr/local/bin/kubectl wait --for=condition=Ready node --all --timeout=240s
-  /usr/local/bin/kubectl version -o yaml > "$ARTIFACTS/kubectl-version.yaml"
+  kubectl_lab wait --for=condition=Ready node --all --timeout=240s
+  kubectl_lab version -o yaml > "$ARTIFACTS/kubectl-version.yaml"
   /usr/local/bin/k3s --version > "$ARTIFACTS/k3s-version.txt"
 }
 
@@ -100,22 +124,22 @@ populate_k3s() {
 
   log "Populating real Kubernetes API objects"
   for ns in lab-a lab-b; do
-    /usr/local/bin/kubectl create namespace "$ns" \
-      --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
+    kubectl_lab create namespace "$ns" \
+      --dry-run=client -o yaml | kubectl_lab apply -f -
 
-    /usr/local/bin/kubectl create serviceaccount "sa-${ns}" -n "$ns" \
-      --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
+    kubectl_lab create serviceaccount "sa-${ns}" -n "$ns" \
+      --dry-run=client -o yaml | kubectl_lab apply -f -
 
     for i in $(seq 1 "$OBJECT_COUNT"); do
-      /usr/local/bin/kubectl create configmap "cm-${i}" \
+      kubectl_lab create configmap "cm-${i}" \
         -n "$ns" \
         --from-literal="key-${i}=value-${i}" \
-        --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
+        --dry-run=client -o yaml | kubectl_lab apply -f -
 
-      /usr/local/bin/kubectl create secret generic "secret-${i}" \
+      kubectl_lab create secret generic "secret-${i}" \
         -n "$ns" \
         --from-literal="token=synthetic-${ns}-${i}" \
-        --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
+        --dry-run=client -o yaml | kubectl_lab apply -f -
     done
   done
 
@@ -146,10 +170,10 @@ spec:
                   type: string
 YAML
 
-  /usr/local/bin/kubectl apply -f "$WORK/lab-crd.yaml"
+  kubectl_lab apply -f "$WORK/lab-crd.yaml"
 
   log "Waiting for CRD to become Established"
-  /usr/local/bin/kubectl wait \
+  kubectl_lab wait \
     --for=condition=Established \
     crd/widgets.lab.example.com \
     --timeout=60s
@@ -164,10 +188,10 @@ spec:
   message: "real k3s etcd lab object"
 YAML
 
-  /usr/local/bin/kubectl apply -f "$WORK/lab-widget.yaml"
+  kubectl_lab apply -f "$WORK/lab-widget.yaml"
 
-  /usr/local/bin/kubectl get ns,cm,secret,sa -A -o wide > "$ARTIFACTS/k8s-inventory.txt"
-  /usr/local/bin/kubectl get crd widgets.lab.example.com -o yaml > "$ARTIFACTS/k8s-crd-widget.yaml"
+  kubectl_lab get ns,cm,secret,sa -A -o wide > "$ARTIFACTS/k8s-inventory.txt"
+  kubectl_lab get crd widgets.lab.example.com -o yaml > "$ARTIFACTS/k8s-crd-widget.yaml"
 }
 
 snapshot_k3s_etcd() {
