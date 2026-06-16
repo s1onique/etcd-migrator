@@ -1,5 +1,5 @@
 /registry/namespaces/migrator-lab
 /registry/configmaps/migrator-lab/cm-alpha
+/registry/deployments/migrator-lab/deploy-alpha
 /registry/secrets/migrator-lab/secret-alpha
 /registry/serviceaccounts/migrator-lab/sa-alpha
-/registry/deployments.apps/migrator-lab/deploy-alpha

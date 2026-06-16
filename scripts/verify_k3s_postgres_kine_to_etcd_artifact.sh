@@ -101,7 +101,7 @@ verify_artifact_dir() {
       "/registry/configmaps/migrator-lab/cm-alpha" \
       "/registry/secrets/migrator-lab/secret-alpha" \
       "/registry/serviceaccounts/migrator-lab/sa-alpha" \
-      "/registry/deployments.apps/migrator-lab/deploy-alpha"
+      "/registry/deployments/migrator-lab/deploy-alpha"
     do
       if ! grep -Fxq "$expected_key" "$expected_keys_file"; then
         err "Kine current-view proof missing expected key: $expected_key"

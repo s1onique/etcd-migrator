@@ -329,7 +329,7 @@ WITH latest AS (
     '/registry/configmaps/migrator-lab/cm-alpha',
     '/registry/secrets/migrator-lab/secret-alpha',
     '/registry/serviceaccounts/migrator-lab/sa-alpha',
-    '/registry/deployments.apps/migrator-lab/deploy-alpha'
+    '/registry/deployments/migrator-lab/deploy-alpha'
   )
   GROUP BY name
 )
