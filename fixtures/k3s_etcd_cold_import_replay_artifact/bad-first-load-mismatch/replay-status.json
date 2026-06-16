@@ -1,0 +1,14 @@
+{
+  "migration_prefix": "/registry/",
+  "replay_expectation": "auto",
+  "first_load_exit_code": 0,
+  "second_load_exit_code": 0,
+  "first_load_keysets_match": false,
+  "first_load_kv_match": true,
+  "second_load_keysets_match": true,
+  "second_load_kv_match": true,
+  "target_hash_unchanged_after_second_load": true,
+  "replay_outcome": "unexpected_failure",
+  "contract_satisfied": false,
+  "run_id": "20240601T120000Z"
+}

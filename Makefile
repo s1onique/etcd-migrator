@@ -1,18 +1,26 @@
-.PHONY: test gate fmt-check vet build clean lab-k3s-etcd-cold-import verify-artifact
+.PHONY: test gate fmt-check vet build clean lab-k3s-etcd-cold-import lab-k3s-etcd-cold-import-replay verify-artifact verify-replay-artifact
 
 test:
 	go test ./...
 
-gate: vet fmt-check test verify-artifact
+gate: vet fmt-check test verify-artifact verify-replay-artifact
 	@echo "✓ Quality gate passed"
 
 verify-artifact:
 	@echo "Running artifact verifier self-test..."
 	@bash scripts/verify_k3s_etcd_cold_import_artifact.sh --self-test
 
+verify-replay-artifact:
+	@echo "Running replay artifact verifier self-test..."
+	@bash scripts/verify_k3s_etcd_cold_import_replay_artifact.sh --self-test
+
 lab-k3s-etcd-cold-import:
 	@echo "This lab requires root because k3s installs system services."
 	@echo "Run: sudo bash scripts/lab_k3s_etcd_cold_import.sh"
+
+lab-k3s-etcd-cold-import-replay:
+	@echo "This lab requires root because k3s installs system services."
+	@echo "Run: sudo bash scripts/lab_k3s_etcd_cold_import_replay.sh"
 
 vet:
 	go vet ./...

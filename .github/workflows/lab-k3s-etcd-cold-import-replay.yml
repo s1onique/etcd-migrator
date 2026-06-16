@@ -1,4 +1,4 @@
-name: Lab - k3s etcd cold import
+name: Lab - k3s etcd cold import replay
 
 on:
   workflow_dispatch:
@@ -19,6 +19,15 @@ on:
         description: "Synthetic Kubernetes object count per namespace"
         required: true
         default: "20"
+      replay_expectation:
+        description: "Replay contract expectation"
+        required: true
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - idempotent
+          - safe-fail
       upload_raw_etcd_artifacts:
         description: "Dangerous: upload raw etcd snapshot/dumps containing Kubernetes Secrets"
         required: true
@@ -29,14 +38,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: lab-k3s-etcd-cold-import
+  group: lab-k3s-etcd-cold-import-replay
   cancel-in-progress: false
 
 jobs:
   lab:
-    name: k3s embedded etcd to standalone etcd cold import
+    name: k3s embedded etcd cold import replay/idempotence
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -54,22 +63,23 @@ jobs:
           go build -o bin/etcd-migrator ./cmd/etcd-migrator
           ./bin/etcd-migrator --help || true
 
-      - name: Run k3s etcd cold-import lab
+      - name: Run k3s etcd cold-import replay lab
         env:
           K3S_CHANNEL: ${{ inputs.k3s_channel }}
           ETCD_VERSION: ${{ inputs.etcd_version }}
           OBJECT_COUNT: ${{ inputs.object_count }}
+          REPLAY_EXPECTATION: ${{ inputs.replay_expectation }}
           UPLOAD_RAW_ETCD_ARTIFACTS: ${{ inputs.upload_raw_etcd_artifacts }}
         run: |
           set -euo pipefail
-          sudo --preserve-env=K3S_CHANNEL,ETCD_VERSION,OBJECT_COUNT,UPLOAD_RAW_ETCD_ARTIFACTS \
-            bash scripts/lab_k3s_etcd_cold_import.sh
+          sudo --preserve-env=K3S_CHANNEL,ETCD_VERSION,OBJECT_COUNT,REPLAY_EXPECTATION,UPLOAD_RAW_ETCD_ARTIFACTS \
+            bash scripts/lab_k3s_etcd_cold_import_replay.sh
 
       - name: Verify lab artifacts
         run: |
           set -euo pipefail
 
-          lab_dir="$(find runs -maxdepth 1 -type d -name 'lab-k3s-etcd-cold-import-*' | sort | tail -1)"
+          lab_dir="$(find runs -maxdepth 1 -type d -name 'lab-k3s-etcd-cold-import-replay-*' | sort | tail -1)"
           if [[ -z "$lab_dir" ]]; then
             echo "ERROR: No lab directory found" >&2
             exit 1
@@ -82,26 +92,26 @@ jobs:
           fi
 
           echo "Verifying artifacts in: $artifact_dir"
-          bash scripts/verify_k3s_etcd_cold_import_artifact.sh "$artifact_dir"
+          bash scripts/verify_k3s_etcd_cold_import_replay_artifact.sh "$artifact_dir"
 
       - name: Upload safe lab evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: k3s-etcd-cold-import-lab
+          name: k3s-etcd-cold-import-replay-lab
           path: |
-            runs/lab-k3s-etcd-cold-import-*/artifacts/**
-            !runs/lab-k3s-etcd-cold-import-*/artifacts/**/*.db
-            !runs/lab-k3s-etcd-cold-import-*/artifacts/**/*.jsonl
-            !runs/lab-k3s-etcd-cold-import-*/artifacts/**/*.kv.tsv
-            !runs/lab-k3s-etcd-cold-import-*/artifacts/**/*kv*.tsv
+            runs/lab-k3s-etcd-cold-import-replay-*/artifacts/**
+            !runs/lab-k3s-etcd-cold-import-replay-*/artifacts/**/*.db
+            !runs/lab-k3s-etcd-cold-import-replay-*/artifacts/**/*.jsonl
+            !runs/lab-k3s-etcd-cold-import-replay-*/artifacts/**/*.kv.tsv
+            !runs/lab-k3s-etcd-cold-import-replay-*/artifacts/**/*kv*.tsv
           if-no-files-found: warn
 
       - name: Upload raw lab artifacts (opt-in)
         if: always() && inputs.upload_raw_etcd_artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: k3s-etcd-cold-import-raw
+          name: k3s-etcd-cold-import-replay-raw
           path: |
-            runs/lab-k3s-etcd-cold-import-*/raw-artifacts/**
+            runs/lab-k3s-etcd-cold-import-replay-*/raw-artifacts/**
           if-no-files-found: warn

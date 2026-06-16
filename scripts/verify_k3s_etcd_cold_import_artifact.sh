@@ -35,6 +35,17 @@ info() {
   echo -e "${GREEN}INFO${NC}: $*"
 }
 
+# ----------------------------------------------------------------------
+# JSON field helper — handles boolean false correctly (unlike // empty)
+# jq '.field // empty' treats false as absent, so we use has() + conditional
+# ----------------------------------------------------------------------
+
+json_field() {
+  local file="$1"
+  local field="$2"
+  jq -r --arg field "$field" 'if has($field) then .[$field] else "__MISSING__" end' "$file"
+}
+
 usage() {
   echo "Usage: $0 [--self-test | <artifact-dir>]"
   echo ""
@@ -72,8 +83,8 @@ verify_artifact_dir() {
 
     # 4. check keysets_match == true
     local keysets_match
-    keysets_match="$(jq -r '.keysets_match // empty' "$artifact_dir/compare-status.json")"
-    if [[ -z "$keysets_match" ]]; then
+    keysets_match="$(json_field "$artifact_dir/compare-status.json" "keysets_match")"
+    if [[ "$keysets_match" == "__MISSING__" ]]; then
       err "compare-status.json missing .keysets_match field"
       failures=$((failures + 1))
     elif [[ "$keysets_match" != "true" ]]; then
@@ -83,8 +94,8 @@ verify_artifact_dir() {
 
     # 5. check kv_match == true
     local kv_match
-    kv_match="$(jq -r '.kv_match // empty' "$artifact_dir/compare-status.json")"
-    if [[ -z "$kv_match" ]]; then
+    kv_match="$(json_field "$artifact_dir/compare-status.json" "kv_match")"
+    if [[ "$kv_match" == "__MISSING__" ]]; then
       err "compare-status.json missing .kv_match field"
       failures=$((failures + 1))
     elif [[ "$kv_match" != "true" ]]; then

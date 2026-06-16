@@ -1,0 +1,7 @@
+{
+  "migration_prefix": "/registry/",
+  "keysets_match": true,
+  "kv_match": true,
+  "run_id": "20240601T120000Z",
+  "phase": "second-load"
+}
