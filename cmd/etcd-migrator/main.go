@@ -12,6 +12,7 @@ import (
 	"github.com/spbnix/etcd-migrator/internal/etcdsource"
 	"github.com/spbnix/etcd-migrator/internal/etcdtarget"
 	"github.com/spbnix/etcd-migrator/internal/inspect"
+	"github.com/spbnix/etcd-migrator/internal/preflight"
 	"github.com/spbnix/etcd-migrator/internal/version"
 )
 
@@ -43,6 +44,12 @@ func main() {
 			os.Exit(1)
 		}
 		return
+	case "preflight":
+		if err := runPreflight(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	default:
 		printUsage()
 		os.Exit(1)
@@ -54,15 +61,19 @@ func printUsage() {
 	fmt.Println("Version:", version.String())
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  etcd-migrator dump    --source-endpoints ENDPOINTS --prefix PREFIX --output FILE")
-	fmt.Println("  etcd-migrator load    --target-endpoints ENDPOINTS --input FILE [--conflict-policy POLICY]")
-	fmt.Println("  etcd-migrator inspect --input FILE")
-	fmt.Println("  etcd-migrator verify  --source FILE --target FILE")
+	fmt.Println("  etcd-migrator dump      --source-endpoints ENDPOINTS --prefix PREFIX --output FILE")
+	fmt.Println("  etcd-migrator load      --target-endpoints ENDPOINTS --input FILE [--conflict-policy POLICY]")
+	fmt.Println("  etcd-migrator inspect   --input FILE")
+	fmt.Println("  etcd-migrator preflight  --source-endpoints ENDPOINTS --target-endpoints ENDPOINTS --prefix PREFIX [--output FILE]")
 	fmt.Println("  etcd-migrator version")
 	fmt.Println()
 	fmt.Println("Load conflict policies:")
 	fmt.Println("  fail-if-present        (default) refuse to write into non-empty target prefix")
 	fmt.Println("  allow-identical-replay  permit load only when target exactly matches dump")
+	fmt.Println()
+	fmt.Println("Preflight output formats:")
+	fmt.Println("  text (default)  human-readable report to stdout")
+	fmt.Println("  json            machine-readable JSON to stdout or --output FILE")
 }
 
 func runDump(args []string) error {
@@ -254,6 +265,97 @@ func runInspect(args []string) error {
 	// Warn if leases are present
 	if stats.LeaseCount > 0 {
 		fmt.Fprintf(os.Stderr, "warning: %d records have lease IDs recorded; leases are not restored by load\n", stats.LeaseCount)
+	}
+
+	return nil
+}
+
+func runPreflight(args []string) error {
+	fs := flag.NewFlagSet("preflight", flag.ContinueOnError)
+
+	var sourceEndpoints string
+	var targetEndpoints string
+	var prefix string
+	var conflictPolicy string
+	var output string
+	var format string
+	var dialTimeout time.Duration
+	var requestTimeout time.Duration
+
+	fs.StringVar(&sourceEndpoints, "source-endpoints", "", "comma-separated etcd source endpoints (required)")
+	fs.StringVar(&targetEndpoints, "target-endpoints", "", "comma-separated etcd target endpoints (required)")
+	fs.StringVar(&prefix, "prefix", "/registry/", "key prefix to check")
+	fs.StringVar(&conflictPolicy, "conflict-policy", "fail-if-present",
+		"conflict policy: fail-if-present or allow-identical-replay")
+	fs.StringVar(&output, "output", "", "output file for JSON report (optional, implies --format=json)")
+	fs.StringVar(&format, "format", "text", "output format: text or json")
+	fs.DurationVar(&dialTimeout, "dial-timeout", 5*time.Second, "etcd dial timeout")
+	fs.DurationVar(&requestTimeout, "request-timeout", 30*time.Second, "etcd request timeout")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	// --output implies JSON format
+	if output != "" {
+		format = "json"
+	}
+
+	// Fail-closed on unknown format
+	switch format {
+	case "text", "json":
+		// valid
+	default:
+		return fmt.Errorf("invalid --format %q, must be 'text' or 'json'", format)
+	}
+
+	sourceEPs := strings.Split(sourceEndpoints, ",")
+	sourceEPs = removeEmpty(sourceEPs)
+	if len(sourceEPs) == 0 || sourceEPs[0] == "" {
+		return errors.New("missing --source-endpoints")
+	}
+
+	targetEPs := strings.Split(targetEndpoints, ",")
+	targetEPs = removeEmpty(targetEPs)
+	if len(targetEPs) == 0 || targetEPs[0] == "" {
+		return errors.New("missing --target-endpoints")
+	}
+
+	cfg := preflight.PreflightConfig{
+		SourceEndpoints: sourceEPs,
+		TargetEndpoints: targetEPs,
+		Prefix:          prefix,
+		ConflictPolicy:  conflictPolicy,
+		DialTimeout:     dialTimeout,
+		RequestTimeout:  requestTimeout,
+	}
+
+	ctx := context.Background()
+	report, err := preflight.RunPreflight(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("preflight: %w", err)
+	}
+
+	// Output the report.
+	var outputBytes []byte
+	switch format {
+	case "json":
+		outputBytes, err = report.ToJSON()
+		if err != nil {
+			return fmt.Errorf("format json: %w", err)
+		}
+	default: // text
+		outputBytes = []byte(report.ToText())
+	}
+
+	// Write to file or stdout.
+	if output != "" {
+		if err := os.WriteFile(output, outputBytes, 0644); err != nil {
+			return fmt.Errorf("write output: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "report written to %s\n", output)
+	} else {
+		fmt.Print(string(outputBytes))
 	}
 
 	return nil

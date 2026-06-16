@@ -1,0 +1,23 @@
+{
+  "go_no_go": true,
+  "classification": "fresh-import",
+  "source_endpoint": {
+    "endpoints": ["localhost:2379"],
+    "healthy": true,
+    "version": "3.5.0"
+  },
+  "target_endpoint": {
+    "endpoints": ["localhost:2380"],
+    "healthy": true,
+    "version": "3.5.0"
+  },
+  "prefix": "/registry/",
+  "conflict_policy": "fail-if-present",
+  "source_prefix_key_count": 100,
+  "target_prefix_key_count": 0,
+  "warnings": [],
+  "errors": [],
+  "tool_version": "0.1.0",
+  "timestamp": "2026-06-16T12:00:00Z",
+  "secret_leaked": "password: super-secret-password-123"
+}

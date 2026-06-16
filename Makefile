@@ -1,9 +1,9 @@
-.PHONY: test gate fmt-check vet build clean lab-k3s-etcd-cold-import lab-k3s-etcd-cold-import-replay lab-k3s-external-etcd-cutover verify-artifact verify-replay-artifact verify-cutover-artifact
+.PHONY: test gate fmt-check vet build clean lab-k3s-etcd-cold-import lab-k3s-etcd-cold-import-replay lab-k3s-external-etcd-cutover verify-artifact verify-replay-artifact verify-cutover-artifact verify-preflight-artifact
 
 test:
 	go test ./...
 
-gate: vet fmt-check test verify-artifact verify-replay-artifact
+gate: vet fmt-check test verify-artifact verify-replay-artifact verify-preflight-artifact
 	@echo "✓ Quality gate passed"
 
 verify-artifact:
@@ -13,6 +13,10 @@ verify-artifact:
 verify-replay-artifact:
 	@echo "Running replay artifact verifier self-test..."
 	@bash scripts/verify_k3s_etcd_cold_import_replay_artifact.sh --self-test
+
+verify-preflight-artifact:
+	@echo "Running preflight artifact verifier self-test..."
+	@bash scripts/verify_k3s_etcd_preflight_artifact.sh --self-test
 
 lab-k3s-etcd-cold-import:
 	@echo "This lab requires root because k3s installs system services."
