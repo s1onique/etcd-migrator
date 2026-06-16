@@ -1,6 +1,6 @@
 {
   "migration_prefix": "/registry/",
-  "conflict_policy": "allow-identical-replay",
+  "conflict_policy": "overwrite",
   "replay_expectation": "auto",
   "first_load_exit_code": 0,
   "second_load_exit_code": 0,

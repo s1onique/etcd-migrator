@@ -14,38 +14,37 @@ func TestConfig_WithDefaults(t *testing.T) {
 		{
 			name:   "empty config gets all defaults",
 			cfg:    Config{},
-			expect: Config{Prefix: "/registry/", BatchSize: 100, DialTimeout: 5 * time.Second, RequestTimeout: 30 * time.Second, RequireEmpty: false},
+			expect: Config{Prefix: "/registry/", BatchSize: 100, DialTimeout: 5 * time.Second, RequestTimeout: 30 * time.Second, ConflictPolicy: PolicyFailIfPresent},
 		},
 		{
-			name: "explicit RequireEmpty=false is preserved",
+			name: "explicit fail-if-present is preserved",
 			cfg: Config{
 				Prefix:         "/custom/",
 				BatchSize:      50,
 				DialTimeout:    10 * time.Second,
-				RequestTimeout: 60 * time.Second,
-				RequireEmpty:   false,
+				ConflictPolicy: PolicyFailIfPresent,
 			},
 			expect: Config{
 				Prefix:         "/custom/",
 				BatchSize:      50,
 				DialTimeout:    10 * time.Second,
-				RequestTimeout: 60 * time.Second,
-				RequireEmpty:   false,
+				RequestTimeout: 30 * time.Second,
+				ConflictPolicy: PolicyFailIfPresent,
 			},
 		},
 		{
-			name: "RequireEmpty=true is preserved",
+			name: "allow-identical-replay is preserved",
 			cfg: Config{
-				Prefix:       "/custom/",
-				BatchSize:    50,
-				RequireEmpty: true,
+				Prefix:         "/custom/",
+				BatchSize:      50,
+				ConflictPolicy: PolicyAllowIdenticalReplay,
 			},
 			expect: Config{
 				Prefix:         "/custom/",
 				BatchSize:      50,
 				DialTimeout:    5 * time.Second,
 				RequestTimeout: 30 * time.Second,
-				RequireEmpty:   true,
+				ConflictPolicy: PolicyAllowIdenticalReplay,
 			},
 		},
 	}
@@ -65,8 +64,8 @@ func TestConfig_WithDefaults(t *testing.T) {
 			if got.RequestTimeout != tt.expect.RequestTimeout {
 				t.Errorf("RequestTimeout: got %v, want %v", got.RequestTimeout, tt.expect.RequestTimeout)
 			}
-			if got.RequireEmpty != tt.expect.RequireEmpty {
-				t.Errorf("RequireEmpty: got %v, want %v", got.RequireEmpty, tt.expect.RequireEmpty)
+			if got.ConflictPolicy != tt.expect.ConflictPolicy {
+				t.Errorf("ConflictPolicy: got %v, want %v", got.ConflictPolicy, tt.expect.ConflictPolicy)
 			}
 		})
 	}
@@ -79,29 +78,44 @@ func TestConfig_Validate(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name:    "valid config",
-			cfg:     Config{Endpoints: []string{"http://localhost:2379"}, Prefix: "/registry/", BatchSize: 100},
+			name:    "valid config with fail-if-present",
+			cfg:     Config{Endpoints: []string{"http://localhost:2379"}, Prefix: "/registry/", BatchSize: 100, ConflictPolicy: PolicyFailIfPresent},
+			wantErr: nil,
+		},
+		{
+			name:    "valid config with allow-identical-replay",
+			cfg:     Config{Endpoints: []string{"http://localhost:2379"}, Prefix: "/registry/", BatchSize: 100, ConflictPolicy: PolicyAllowIdenticalReplay},
 			wantErr: nil,
 		},
 		{
 			name:    "missing endpoints",
-			cfg:     Config{Endpoints: []string{}, Prefix: "/registry/", BatchSize: 100},
+			cfg:     Config{Endpoints: []string{}, Prefix: "/registry/", BatchSize: 100, ConflictPolicy: PolicyFailIfPresent},
 			wantErr: ErrMissingEndpoints,
 		},
 		{
 			name:    "empty prefix",
-			cfg:     Config{Endpoints: []string{"http://localhost:2379"}, Prefix: "", BatchSize: 100},
+			cfg:     Config{Endpoints: []string{"http://localhost:2379"}, Prefix: "", BatchSize: 100, ConflictPolicy: PolicyFailIfPresent},
 			wantErr: ErrEmptyPrefix,
 		},
 		{
 			name:    "zero batch size",
-			cfg:     Config{Endpoints: []string{"http://localhost:2379"}, Prefix: "/registry/", BatchSize: 0},
+			cfg:     Config{Endpoints: []string{"http://localhost:2379"}, Prefix: "/registry/", BatchSize: 0, ConflictPolicy: PolicyFailIfPresent},
 			wantErr: ErrInvalidBatchSize,
 		},
 		{
 			name:    "negative batch size",
-			cfg:     Config{Endpoints: []string{"http://localhost:2379"}, Prefix: "/registry/", BatchSize: -1},
+			cfg:     Config{Endpoints: []string{"http://localhost:2379"}, Prefix: "/registry/", BatchSize: -1, ConflictPolicy: PolicyFailIfPresent},
 			wantErr: ErrInvalidBatchSize,
+		},
+		{
+			name:    "empty conflict policy",
+			cfg:     Config{Endpoints: []string{"http://localhost:2379"}, Prefix: "/registry/", BatchSize: 100, ConflictPolicy: ""},
+			wantErr: ErrEmptyConflictPolicy,
+		},
+		{
+			name:    "invalid conflict policy",
+			cfg:     Config{Endpoints: []string{"http://localhost:2379"}, Prefix: "/registry/", BatchSize: 100, ConflictPolicy: "overwrite"},
+			wantErr: ErrInvalidConflictPolicy,
 		},
 	}
 

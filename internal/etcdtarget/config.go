@@ -5,6 +5,20 @@ import (
 	"time"
 )
 
+// ConflictPolicy defines behavior when target prefix already contains data.
+type ConflictPolicy string
+
+const (
+	// PolicyFailIfPresent refuses to write into a non-empty target prefix.
+	// This is the safest default for operators.
+	PolicyFailIfPresent ConflictPolicy = "fail-if-present"
+
+	// PolicyAllowIdenticalReplay permits a load only when the target prefix
+	// exactly matches the dump. Partial targets, divergent values, and extra
+	// keys under the prefix fail before mutation.
+	PolicyAllowIdenticalReplay ConflictPolicy = "allow-identical-replay"
+)
+
 // Config holds parameters for connecting to target etcd and loading a dump.
 type Config struct {
 	Endpoints      []string
@@ -12,19 +26,28 @@ type Config struct {
 	BatchSize      int
 	DialTimeout    time.Duration
 	RequestTimeout time.Duration
-	RequireEmpty   bool
+	ConflictPolicy ConflictPolicy
+	DumpRecords    []DumpKV // Pre-loaded dump records for identical-replay comparison
+}
+
+// DumpKV holds a decoded key/value pair for comparison.
+type DumpKV struct {
+	Key   []byte
+	Value []byte
 }
 
 var (
-	ErrMissingEndpoints = errors.New("missing etcd endpoints")
-	ErrEmptyPrefix      = errors.New("prefix cannot be empty")
-	ErrInvalidBatchSize = errors.New("batch size must be greater than zero")
-	ErrTargetNotEmpty   = errors.New("target prefix is not empty")
+	ErrMissingEndpoints      = errors.New("missing etcd endpoints")
+	ErrEmptyPrefix           = errors.New("prefix cannot be empty")
+	ErrInvalidBatchSize      = errors.New("batch size must be greater than zero")
+	ErrTargetNotEmpty        = errors.New("target prefix is not empty")
+	ErrTargetNotIdentical    = errors.New("target prefix does not exactly match dump")
+	ErrInvalidConflictPolicy = errors.New("invalid conflict policy")
+	ErrEmptyConflictPolicy   = errors.New("conflict policy cannot be empty")
 )
 
 // WithDefaults returns a copy of cfg with zero-valued fields filled in.
-// RequireEmpty is NOT defaulted here; callers must set it explicitly.
-// The default of true for safety is enforced at CLI/config construction.
+// Default conflict policy is PolicyFailIfPresent for operator safety.
 func (c Config) WithDefaults() Config {
 	out := c
 	if out.Prefix == "" {
@@ -39,8 +62,9 @@ func (c Config) WithDefaults() Config {
 	if out.RequestTimeout == 0 {
 		out.RequestTimeout = 30 * time.Second
 	}
-	// RequireEmpty is intentionally not defaulted here.
-	// Callers must set it explicitly based on their safety requirements.
+	if out.ConflictPolicy == "" {
+		out.ConflictPolicy = PolicyFailIfPresent
+	}
 	return out
 }
 
@@ -54,6 +78,12 @@ func (c Config) Validate() error {
 	}
 	if c.BatchSize <= 0 {
 		return ErrInvalidBatchSize
+	}
+	if c.ConflictPolicy == "" {
+		return ErrEmptyConflictPolicy
+	}
+	if c.ConflictPolicy != PolicyFailIfPresent && c.ConflictPolicy != PolicyAllowIdenticalReplay {
+		return ErrInvalidConflictPolicy
 	}
 	return nil
 }

@@ -84,7 +84,31 @@ verify_artifact_dir() {
       failures=$((failures + 1))
     fi
 
-    # 3. check first_load_exit_code == 0
+    # 3. check conflict_policy field exists
+    local conflict_policy
+    conflict_policy="$(jq -r '.conflict_policy // empty' "$artifact_dir/replay-status.json")"
+    if [[ -z "$conflict_policy" ]]; then
+      err "replay-status.json missing .conflict_policy field"
+      failures=$((failures + 1))
+    elif [[ "$conflict_policy" != "fail-if-present" ]] && [[ "$conflict_policy" != "allow-identical-replay" ]]; then
+      err ".conflict_policy must be 'fail-if-present' or 'allow-identical-replay', got '$conflict_policy'"
+      failures=$((failures + 1))
+    fi
+
+    # 4. check conflict-policy.txt exists and matches
+    if [[ ! -f "$artifact_dir/conflict-policy.txt" ]]; then
+      err "Missing required file: conflict-policy.txt"
+      failures=$((failures + 1))
+    else
+      local conflict_policy_file
+      conflict_policy_file="$(cat "$artifact_dir/conflict-policy.txt")"
+      if [[ "$conflict_policy_file" != "$conflict_policy" ]]; then
+        err "conflict-policy.txt ('$conflict_policy_file') does not match .conflict_policy ('$conflict_policy')"
+        failures=$((failures + 1))
+      fi
+    fi
+
+    # 5. check first_load_exit_code == 0
     local first_exit
     first_exit="$(jq -r '.first_load_exit_code // empty' "$artifact_dir/replay-status.json")"
     if [[ -z "$first_exit" ]]; then
@@ -95,7 +119,7 @@ verify_artifact_dir() {
       failures=$((failures + 1))
     fi
 
-    # 4. check first_load_keysets_match == true
+    # 6. check first_load_keysets_match == true
     local first_keysets
     first_keysets="$(json_field "$artifact_dir/replay-status.json" "first_load_keysets_match")"
     if [[ "$first_keysets" == "__MISSING__" ]]; then
@@ -106,7 +130,7 @@ verify_artifact_dir() {
       failures=$((failures + 1))
     fi
 
-    # 5. check first_load_kv_match == true
+    # 7. check first_load_kv_match == true
     local first_kv
     first_kv="$(json_field "$artifact_dir/replay-status.json" "first_load_kv_match")"
     if [[ "$first_kv" == "__MISSING__" ]]; then
@@ -117,7 +141,7 @@ verify_artifact_dir() {
       failures=$((failures + 1))
     fi
 
-    # 6. check second_load_keysets_match == true
+    # 8. check second_load_keysets_match == true
     local second_keysets
     second_keysets="$(json_field "$artifact_dir/replay-status.json" "second_load_keysets_match")"
     if [[ "$second_keysets" == "__MISSING__" ]]; then
@@ -128,7 +152,7 @@ verify_artifact_dir() {
       failures=$((failures + 1))
     fi
 
-    # 7. check second_load_kv_match == true
+    # 9. check second_load_kv_match == true
     local second_kv
     second_kv="$(json_field "$artifact_dir/replay-status.json" "second_load_kv_match")"
     if [[ "$second_kv" == "__MISSING__" ]]; then
@@ -139,7 +163,7 @@ verify_artifact_dir() {
       failures=$((failures + 1))
     fi
 
-    # 8. check target_hash_unchanged_after_second_load == true
+    # 10. check target_hash_unchanged_after_second_load == true
     local target_unchanged
     target_unchanged="$(json_field "$artifact_dir/replay-status.json" "target_hash_unchanged_after_second_load")"
     if [[ "$target_unchanged" == "__MISSING__" ]]; then
@@ -150,7 +174,7 @@ verify_artifact_dir() {
       failures=$((failures + 1))
     fi
 
-    # 9. check contract_satisfied == true
+    # 11. check contract_satisfied == true
     local contract_satisfied
     contract_satisfied="$(json_field "$artifact_dir/replay-status.json" "contract_satisfied")"
     if [[ "$contract_satisfied" == "__MISSING__" ]]; then
@@ -161,7 +185,7 @@ verify_artifact_dir() {
       failures=$((failures + 1))
     fi
 
-    # 10. check replay_outcome is one of valid outcomes
+    # 12. check replay_outcome is one of valid outcomes
     local replay_outcome
     replay_outcome="$(jq -r '.replay_outcome // empty' "$artifact_dir/replay-status.json")"
     if [[ -z "$replay_outcome" ]]; then
@@ -172,25 +196,41 @@ verify_artifact_dir() {
       failures=$((failures + 1))
     fi
 
-    # 11. If idempotent_success, second_load_exit_code must be 0
+    # 13. check second_load_exit_code field exists
     local second_exit
     second_exit="$(jq -r '.second_load_exit_code // empty' "$artifact_dir/replay-status.json")"
     if [[ -z "$second_exit" ]]; then
       err "replay-status.json missing .second_load_exit_code field"
       failures=$((failures + 1))
-    elif [[ "$replay_outcome" == "idempotent_success" ]] && [[ "$second_exit" != "0" ]]; then
-      err "For idempotent_success, .second_load_exit_code must be 0, got '$second_exit'"
-      failures=$((failures + 1))
     fi
 
-    # 12. If safe_fail_no_mutation, second_load_exit_code must be nonzero
-    if [[ "$replay_outcome" == "safe_fail_no_mutation" ]] && [[ "$second_exit" == "0" ]]; then
-      err "For safe_fail_no_mutation, .second_load_exit_code must be nonzero, got '$second_exit'"
-      failures=$((failures + 1))
+    # 14. check conflict_policy-specific outcome consistency
+    if [[ "$conflict_policy" == "fail-if-present" ]]; then
+      # With fail-if-present, second load must fail nonzero
+      if [[ -n "$second_exit" ]] && [[ "$second_exit" == "0" ]]; then
+        err "For conflict-policy=fail-if-present, .second_load_exit_code must be nonzero, got '$second_exit'"
+        failures=$((failures + 1))
+      fi
+      # replay_outcome should be safe_fail_no_mutation
+      if [[ "$replay_outcome" != "safe_fail_no_mutation" ]]; then
+        err "For conflict-policy=fail-if-present, .replay_outcome must be 'safe_fail_no_mutation', got '$replay_outcome'"
+        failures=$((failures + 1))
+      fi
+    elif [[ "$conflict_policy" == "allow-identical-replay" ]]; then
+      # With allow-identical-replay, second load must succeed
+      if [[ -n "$second_exit" ]] && [[ "$second_exit" != "0" ]]; then
+        err "For conflict-policy=allow-identical-replay, .second_load_exit_code must be 0, got '$second_exit'"
+        failures=$((failures + 1))
+      fi
+      # replay_outcome should be idempotent_success
+      if [[ "$replay_outcome" != "idempotent_success" ]]; then
+        err "For conflict-policy=allow-identical-replay, .replay_outcome must be 'idempotent_success', got '$replay_outcome'"
+        failures=$((failures + 1))
+      fi
     fi
   fi
 
-  # 13. check migration-prefix.txt exists and equals /registry/
+  # 15. check migration-prefix.txt exists and equals /registry/
   if [[ ! -f "$artifact_dir/migration-prefix.txt" ]]; then
     err "Missing required file: migration-prefix.txt"
     failures=$((failures + 1))
@@ -203,7 +243,7 @@ verify_artifact_dir() {
     fi
   fi
 
-  # 14. check compare JSON files exist and are valid
+  # 16. check compare JSON files exist and are valid
   for compare_file in "compare-after-first-load.json" "compare-after-second-load.json"; do
     if [[ ! -f "$artifact_dir/$compare_file" ]]; then
       err "Missing required file: $compare_file"
@@ -214,7 +254,7 @@ verify_artifact_dir() {
     fi
   done
 
-  # 15. check endpoint status JSON files exist and are valid
+  # 17. check endpoint status JSON files exist and are valid
   for status_file in "target-endpoint-status-after-first-load.json" "target-endpoint-status-after-second-load.json"; do
     if [[ ! -f "$artifact_dir/$status_file" ]]; then
       err "Missing required file: $status_file"
@@ -225,7 +265,7 @@ verify_artifact_dir() {
     fi
   done
 
-  # 16. check hash files exist and contain valid 64-char hex
+  # 18. check hash files exist and contain valid 64-char hex
   local src_first_hash tgt_first_hash src_second_hash tgt_second_hash
   src_first_hash="$(cut -d' ' -f1 "$artifact_dir/source-kv-after-first-load-sha256.txt" 2>/dev/null || echo "")"
   tgt_first_hash="$(cut -d' ' -f1 "$artifact_dir/target-kv-after-first-load-sha256.txt" 2>/dev/null || echo "")"
@@ -265,7 +305,7 @@ verify_artifact_dir() {
     failures=$((failures + 1))
   fi
 
-  # 17. check key-count files exist and contain numeric counts
+  # 19. check key-count files exist and contain numeric counts
   for counts_file in "key-counts-after-first-load.txt" "key-counts-after-second-load.txt"; do
     if [[ ! -f "$artifact_dir/$counts_file" ]]; then
       err "Missing required file: $counts_file"
@@ -287,7 +327,7 @@ verify_artifact_dir() {
     fi
   done
 
-  # 18. check key-diff files exist and are empty
+  # 20. check key-diff files exist and are empty
   for diff_file in "key-diff-after-first-load.txt" "key-diff-after-second-load.txt"; do
     if [[ ! -f "$artifact_dir/$diff_file" ]]; then
       err "Missing required file: $diff_file"
@@ -298,7 +338,7 @@ verify_artifact_dir() {
     fi
   done
 
-  # 19. check second-load-exit-code.txt exists and matches replay-status.json
+  # 21. check second-load-exit-code.txt exists and matches replay-status.json
   if [[ ! -f "$artifact_dir/second-load-exit-code.txt" ]]; then
     err "Missing required file: second-load-exit-code.txt"
     failures=$((failures + 1))
@@ -313,7 +353,7 @@ verify_artifact_dir() {
     fi
   fi
 
-  # 20. check second-load stdout/stderr exist
+  # 22. check second-load stdout/stderr exist
   if [[ ! -f "$artifact_dir/second-load-stdout.txt" ]]; then
     err "Missing required file: second-load-stdout.txt"
     failures=$((failures + 1))
@@ -324,7 +364,7 @@ verify_artifact_dir() {
     failures=$((failures + 1))
   fi
 
-  # 21. check safe artifact directory does not contain raw snapshots
+  # 23. check safe artifact directory does not contain raw snapshots
   # Allowed safe files: k3s-snapshot-status.json, k3s-snapshot.sha256
   local raw_snapshot_files
   raw_snapshot_files=$(find "$artifact_dir" -maxdepth 1 -type f \( -name '*.db' -o -name '*snapshot*' \) 2>/dev/null || true)
@@ -343,7 +383,7 @@ verify_artifact_dir() {
     fi
   fi
 
-  # 22. check safe artifact directory does not contain raw migrator dumps
+  # 24. check safe artifact directory does not contain raw migrator dumps
   local raw_dump_files
   raw_dump_files=$(find "$artifact_dir" -maxdepth 1 -type f \( -name '*dump*' -o -name '*.jsonl' \) 2>/dev/null || true)
   if [[ -n "$raw_dump_files" ]]; then
@@ -351,7 +391,7 @@ verify_artifact_dir() {
     failures=$((failures + 1))
   fi
 
-  # 23. check safe artifact directory does not contain raw KV TSV work files
+  # 25. check safe artifact directory does not contain raw KV TSV work files
   local raw_kv_files
   raw_kv_files=$(find "$artifact_dir" -maxdepth 1 -type f \( -name 'source.kv.tsv' -o -name 'target.kv.tsv' -o -name '*.kv.tsv' -o -name '*kv*.tsv' \) 2>/dev/null || true)
   if [[ -n "$raw_kv_files" ]]; then

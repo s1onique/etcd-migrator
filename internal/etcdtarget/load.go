@@ -16,9 +16,12 @@ import (
 //
 // Two-phase behavior prevents partial writes from malformed input:
 //   - Phase 1: Validate all input locally (decode, prefix-check)
-//   - Phase 2: Write to target etcd only if phase 1 succeeds completely
+//   - Phase 2: Run conflict preflight and write only if policy permits
 //
-// LoadDump is guarded by an empty-target-prefix check when RequireEmpty is true.
+// LoadDump implements conflict policy checks before any target mutation:
+//   - PolicyFailIfPresent: refuse non-empty target prefix before mutation
+//   - PolicyAllowIdenticalReplay: compare target to dump, allow only exact match
+//
 // LoadDump does not restore version, create_revision, mod_revision, or lease.
 func LoadDump(ctx context.Context, cfg Config, r io.Reader) (Stats, error) {
 	cfg = cfg.WithDefaults()
@@ -39,7 +42,7 @@ func LoadDump(ctx context.Context, cfg Config, r io.Reader) (Stats, error) {
 		return Stats{}, fmt.Errorf("compute digest: %w", err)
 	}
 
-	// Phase 2: Connect to target etcd and write only after full validation.
+	// Phase 2: Connect to target etcd and run conflict preflight.
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   cfg.Endpoints,
 		DialTimeout: cfg.DialTimeout,
@@ -49,11 +52,9 @@ func LoadDump(ctx context.Context, cfg Config, r io.Reader) (Stats, error) {
 	}
 	defer cli.Close()
 
-	// Check target prefix emptiness if required.
-	if cfg.RequireEmpty {
-		if err := checkEmpty(ctx, cli, cfg); err != nil {
-			return Stats{}, err
-		}
+	// Run conflict preflight before any writes.
+	if err := runConflictPreflight(ctx, cli, cfg, allRecords); err != nil {
+		return Stats{}, err
 	}
 
 	// Write all records in batches.
@@ -106,11 +107,24 @@ func readAndValidateDump(r io.Reader, prefix string) ([]dump.Record, int64, int6
 	return allRecords, count, totalBytes, nil
 }
 
+// runConflictPreflight checks the target against the conflict policy before mutation.
+// Returns nil if the load should proceed, or an error if the policy blocks the load.
+// This function never mutates the target.
+func runConflictPreflight(ctx context.Context, cli *clientv3.Client, cfg Config, records []dump.Record) error {
+	switch cfg.ConflictPolicy {
+	case PolicyFailIfPresent:
+		return checkEmpty(ctx, cli, cfg)
+	case PolicyAllowIdenticalReplay:
+		return checkIdenticalReplay(ctx, cli, cfg, records)
+	default:
+		return fmt.Errorf("%w: %s", ErrInvalidConflictPolicy, cfg.ConflictPolicy)
+	}
+}
+
 // checkEmpty verifies that no keys exist under cfg.Prefix in target etcd.
 func checkEmpty(ctx context.Context, cli *clientv3.Client, cfg Config) error {
 	rangeEnd := keyrange.PrefixRangeEndString(cfg.Prefix)
 	if rangeEnd == "" {
-		// Empty prefix cannot be bounded; this is a config error.
 		return fmt.Errorf("prefix %q cannot be bounded for range check", cfg.Prefix)
 	}
 
@@ -122,9 +136,68 @@ func checkEmpty(ctx context.Context, cli *clientv3.Client, cfg Config) error {
 		return fmt.Errorf("check empty: %w", err)
 	}
 	if resp.Count > 0 {
-		return ErrTargetNotEmpty
+		return fmt.Errorf("target prefix %q already contains data; refusing to load with conflict-policy=%s",
+			cfg.Prefix, cfg.ConflictPolicy)
 	}
 	return nil
+}
+
+// checkIdenticalReplay verifies that the target prefix exactly matches the dump.
+// Uses CompareDumpToTarget for the comparison, which is a pure function suitable for testing.
+// Comparison is scoped to the migration prefix only.
+// Returns nil if target is empty (allowed first load) or exactly matches dump.
+// Error if target is partial, has extra keys, or has divergent values.
+// Never mutates the target.
+func checkIdenticalReplay(ctx context.Context, cli *clientv3.Client, cfg Config, records []dump.Record) error {
+	// Fetch all keys under prefix from target.
+	rangeEnd := keyrange.PrefixRangeEndString(cfg.Prefix)
+	if rangeEnd == "" {
+		return fmt.Errorf("prefix %q cannot be bounded for range check", cfg.Prefix)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, cfg.RequestTimeout)
+	defer cancel()
+
+	resp, err := cli.Get(ctx, cfg.Prefix, clientv3.WithRange(rangeEnd), clientv3.WithLimit(0))
+	if err != nil {
+		return fmt.Errorf("fetch target keys: %w", err)
+	}
+
+	// Build target KV map from etcd response.
+	targetKVs := make(map[string][]byte, len(resp.Kvs))
+	for _, kv := range resp.Kvs {
+		targetKVs[string(kv.Key)] = kv.Value
+	}
+
+	// Use the pure comparison function - this is the same logic tested in unit tests.
+	result, err := CompareDumpToTarget(cfg, records, targetKVs)
+	if err != nil {
+		return fmt.Errorf("compare dump to target: %w", err)
+	}
+
+	// Determine outcome based on comparison result.
+	if result.IsEmpty {
+		// Empty target is allowed for first load with allow-identical-replay.
+		return nil
+	}
+	if result.IsIdentical {
+		return nil
+	}
+	if result.IsPartial {
+		return fmt.Errorf("target prefix %q has fewer keys than dump; refusing replay with conflict-policy=%s",
+			cfg.Prefix, cfg.ConflictPolicy)
+	}
+	if result.IsExtra {
+		return fmt.Errorf("target prefix %q does not exactly match dump; refusing replay with conflict-policy=%s",
+			cfg.Prefix, cfg.ConflictPolicy)
+	}
+	if result.IsDivergent {
+		return fmt.Errorf("target prefix %q does not exactly match dump; refusing replay with conflict-policy=%s",
+			cfg.Prefix, cfg.ConflictPolicy)
+	}
+
+	return fmt.Errorf("target prefix %q does not exactly match dump; refusing replay with conflict-policy=%s",
+		cfg.Prefix, cfg.ConflictPolicy)
 }
 
 // writeAllRecords writes all records to etcd using batched transactions.

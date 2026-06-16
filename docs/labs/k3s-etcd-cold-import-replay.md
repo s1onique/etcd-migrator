@@ -75,8 +75,19 @@ The second load fails safely before mutation:
 | `k3s_channel` | k3s install channel | `stable` |
 | `etcd_version` | Standalone etcd release | `v3.5.21` |
 | `object_count` | Synthetic Kubernetes object count per namespace | `20` |
-| `replay_expectation` | Replay contract expectation | `auto` |
+| `conflict_policy` | Load conflict policy | `fail-if-present` |
 | `upload_raw_etcd_artifacts` | Dangerous: upload raw etcd snapshot/dumps | `false` |
+
+### Conflict Policy
+
+By default, `etcd-migrator load` refuses to write into a non-empty target prefix. This prevents accidental reruns from silently overwriting or mixing state.
+
+To intentionally validate a rerun, use `--conflict-policy=allow-identical-replay`. This succeeds only when the target prefix already exactly matches the dump. Partial targets, divergent values, and extra keys under the prefix fail before mutation.
+
+| Policy | Behavior | Replay Outcome |
+|--------|----------|----------------|
+| `fail-if-present` | Refuse non-empty target prefix before mutation | `safe_fail_no_mutation` |
+| `allow-identical-replay` | Allow only exact target/dump match | `idempotent_success` |
 
 ### Replay Expectation Options
 

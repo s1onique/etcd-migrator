@@ -19,15 +19,14 @@ on:
         description: "Synthetic Kubernetes object count per namespace"
         required: true
         default: "20"
-      replay_expectation:
-        description: "Replay contract expectation"
+      conflict_policy:
+        description: "Load conflict policy for replay"
         required: true
-        default: "auto"
+        default: "fail-if-present"
         type: choice
         options:
-          - auto
-          - idempotent
-          - safe-fail
+          - fail-if-present
+          - allow-identical-replay
       upload_raw_etcd_artifacts:
         description: "Dangerous: upload raw etcd snapshot/dumps containing Kubernetes Secrets"
         required: true
@@ -68,11 +67,11 @@ jobs:
           K3S_CHANNEL: ${{ inputs.k3s_channel }}
           ETCD_VERSION: ${{ inputs.etcd_version }}
           OBJECT_COUNT: ${{ inputs.object_count }}
-          REPLAY_EXPECTATION: ${{ inputs.replay_expectation }}
+          CONFLICT_POLICY: ${{ inputs.conflict_policy }}
           UPLOAD_RAW_ETCD_ARTIFACTS: ${{ inputs.upload_raw_etcd_artifacts }}
         run: |
           set -euo pipefail
-          sudo --preserve-env=K3S_CHANNEL,ETCD_VERSION,OBJECT_COUNT,REPLAY_EXPECTATION,UPLOAD_RAW_ETCD_ARTIFACTS \
+          sudo --preserve-env=K3S_CHANNEL,ETCD_VERSION,OBJECT_COUNT,CONFLICT_POLICY,UPLOAD_RAW_ETCD_ARTIFACTS \
             bash scripts/lab_k3s_etcd_cold_import_replay.sh
 
       - name: Verify lab artifacts

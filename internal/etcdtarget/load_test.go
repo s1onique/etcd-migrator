@@ -124,6 +124,46 @@ func TestReadAndValidateDump(t *testing.T) {
 	}
 }
 
+func TestConflictPolicyConstants(t *testing.T) {
+	// Verify policy constants have expected string values.
+	if PolicyFailIfPresent != "fail-if-present" {
+		t.Errorf("PolicyFailIfPresent = %q, want %q", PolicyFailIfPresent, "fail-if-present")
+	}
+	if PolicyAllowIdenticalReplay != "allow-identical-replay" {
+		t.Errorf("PolicyAllowIdenticalReplay = %q, want %q", PolicyAllowIdenticalReplay, "allow-identical-replay")
+	}
+}
+
+func TestConfig_ConflictPolicyValues(t *testing.T) {
+	// Verify valid policy values.
+	validPolicies := []ConflictPolicy{PolicyFailIfPresent, PolicyAllowIdenticalReplay}
+	for _, p := range validPolicies {
+		cfg := Config{
+			Endpoints:      []string{"http://localhost:2379"},
+			Prefix:         "/registry/",
+			BatchSize:      100,
+			ConflictPolicy: p,
+		}
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("Validate() with policy %q = %v, want nil", p, err)
+		}
+	}
+
+	// Verify invalid policy values fail.
+	invalidPolicies := []ConflictPolicy{"", "overwrite", "safe-write", "replace"}
+	for _, p := range invalidPolicies {
+		cfg := Config{
+			Endpoints:      []string{"http://localhost:2379"},
+			Prefix:         "/registry/",
+			BatchSize:      100,
+			ConflictPolicy: p,
+		}
+		if err := cfg.Validate(); err == nil {
+			t.Errorf("Validate() with policy %q = nil, want error", p)
+		}
+	}
+}
+
 func mustMarshalJSON(t *testing.T, rec dump.Record) string {
 	t.Helper()
 	var buf bytes.Buffer

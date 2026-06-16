@@ -1,5 +1,6 @@
 {
   "migration_prefix": "/registry/",
+  "conflict_policy": "fail-if-present",
   "replay_expectation": "auto",
   "first_load_exit_code": 0,
   "second_load_exit_code": 1,

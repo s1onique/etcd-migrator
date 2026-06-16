@@ -55,10 +55,14 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  etcd-migrator dump    --source-endpoints ENDPOINTS --prefix PREFIX --output FILE")
-	fmt.Println("  etcd-migrator load    --target-endpoints ENDPOINTS --input FILE")
+	fmt.Println("  etcd-migrator load    --target-endpoints ENDPOINTS --input FILE [--conflict-policy POLICY]")
 	fmt.Println("  etcd-migrator inspect --input FILE")
 	fmt.Println("  etcd-migrator verify  --source FILE --target FILE")
 	fmt.Println("  etcd-migrator version")
+	fmt.Println()
+	fmt.Println("Load conflict policies:")
+	fmt.Println("  fail-if-present        (default) refuse to write into non-empty target prefix")
+	fmt.Println("  allow-identical-replay  permit load only when target exactly matches dump")
 }
 
 func runDump(args []string) error {
@@ -158,7 +162,7 @@ func runLoad(args []string) error {
 	var batchSize int
 	var dialTimeout time.Duration
 	var requestTimeout time.Duration
-	var allowNonEmpty bool
+	var conflictPolicy string
 
 	fs.StringVar(&targetEndpoints, "target-endpoints", "", "comma-separated etcd endpoints (required)")
 	fs.StringVar(&input, "input", "", "input JSONL file (required)")
@@ -166,7 +170,8 @@ func runLoad(args []string) error {
 	fs.IntVar(&batchSize, "batch-size", 100, "batch size for etcd writes")
 	fs.DurationVar(&dialTimeout, "dial-timeout", 5*time.Second, "etcd dial timeout")
 	fs.DurationVar(&requestTimeout, "request-timeout", 30*time.Second, "etcd request timeout")
-	fs.BoolVar(&allowNonEmpty, "allow-non-empty", false, "allow loading into non-empty target prefix")
+	fs.StringVar(&conflictPolicy, "conflict-policy", "fail-if-present",
+		"conflict policy: fail-if-present or allow-identical-replay")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -194,7 +199,7 @@ func runLoad(args []string) error {
 		BatchSize:      batchSize,
 		DialTimeout:    dialTimeout,
 		RequestTimeout: requestTimeout,
-		RequireEmpty:   !allowNonEmpty,
+		ConflictPolicy: etcdtarget.ConflictPolicy(conflictPolicy),
 	}
 
 	ctx := context.Background()

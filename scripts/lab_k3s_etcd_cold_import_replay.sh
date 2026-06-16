@@ -28,6 +28,8 @@ UPLOAD_RAW_ETCD_ARTIFACTS="${UPLOAD_RAW_ETCD_ARTIFACTS:-false}"
 MIGRATION_PREFIX="${MIGRATION_PREFIX:-/registry/}"
 # Replay expectation: auto (accept either), idempotent (require success), safe-fail (require nonzero)
 REPLAY_EXPECTATION="${REPLAY_EXPECTATION:-auto}"
+# Conflict policy: fail-if-present (default, safe) or allow-identical-replay (idempotent)
+CONFLICT_POLICY="${CONFLICT_POLICY:-fail-if-present}"
 
 # kubectl resolver: prefer PATH kubectl, fallback to k3s kubectl
 KUBECTL_CMD=()
@@ -309,7 +311,7 @@ run_migrator_load() {
   local label="$1"
   local output_prefix="$2"
 
-  log "Running etcd-migrator load into target ($label)"
+  log "Running etcd-migrator load into target ($label) with conflict-policy=$CONFLICT_POLICY"
 
   local stdout_file="$ARTIFACTS/${output_prefix}-stdout.txt"
   local stderr_file="$ARTIFACTS/${output_prefix}-stderr.txt"
@@ -322,6 +324,7 @@ run_migrator_load() {
     --target-endpoints="http://127.0.0.1:24790" \
     --prefix="$MIGRATION_PREFIX" \
     --input "$WORK/source.dump.jsonl" \
+    --conflict-policy="$CONFLICT_POLICY" \
     > "$stdout_file" 2> "$stderr_file"
   local exit_code=$?
   set -e
@@ -502,6 +505,7 @@ write_replay_status() {
   cat > "$ARTIFACTS/replay-status.json" <<JSON
 {
   "migration_prefix": "${MIGRATION_PREFIX}",
+  "conflict_policy": "${CONFLICT_POLICY}",
   "replay_expectation": "${REPLAY_EXPECTATION}",
   "first_load_exit_code": ${first_exit},
   "second_load_exit_code": ${second_exit},
@@ -515,6 +519,9 @@ write_replay_status() {
   "run_id": "${RUN_ID}"
 }
 JSON
+
+  # Write conflict policy artifact
+  printf '%s\n' "$CONFLICT_POLICY" > "$ARTIFACTS/conflict-policy.txt"
 
   log "Replay status: outcome=${replay_outcome}, contract_satisfied=${contract_satisfied}"
 
