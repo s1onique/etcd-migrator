@@ -68,11 +68,19 @@ jobs:
       - name: Verify lab artifacts
         run: |
           set -euo pipefail
-          artifact_dir="$(find runs -type d -path '*/lab-k3s-etcd-cold-import-*/artifacts' | sort | tail -1)"
-          if [[ -z "$artifact_dir" ]]; then
-            echo "ERROR: No artifact directory found" >&2
+
+          lab_dir="$(find runs -maxdepth 1 -type d -name 'lab-k3s-etcd-cold-import-*' | sort | tail -1)"
+          if [[ -z "$lab_dir" ]]; then
+            echo "ERROR: No lab directory found" >&2
             exit 1
           fi
+
+          artifact_dir="$lab_dir/artifacts"
+          if [[ ! -d "$artifact_dir" ]]; then
+            echo "ERROR: Artifact directory not found: $artifact_dir" >&2
+            exit 1
+          fi
+
           echo "Verifying artifacts in: $artifact_dir"
           bash scripts/verify_k3s_etcd_cold_import_artifact.sh "$artifact_dir"
 

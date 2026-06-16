@@ -397,6 +397,9 @@ main() {
   run_migrator
   collect_compare_evidence
 
+  # Make safe artifact dirs readable by normal runner user without touching root-owned etcd work dirs
+  chmod -R a+rX "$ARTIFACTS" "$RAW_ARTIFACTS" 2>/dev/null || true
+
   log "PASS: k3s embedded etcd snapshot restored and migrated into standalone target"
 }
 
