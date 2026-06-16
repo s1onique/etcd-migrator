@@ -1,0 +1,3 @@
+--- source.key
++++ target.key
+-/registry/secrets/secret-missing

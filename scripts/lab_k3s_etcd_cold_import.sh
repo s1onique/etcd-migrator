@@ -16,6 +16,7 @@ LAB_ROOT="${LAB_ROOT:-$PWD/runs/${LAB_NAME}-${RUN_ID}}"
 ARTIFACTS="$LAB_ROOT/artifacts"
 WORK="$LAB_ROOT/work"
 BIN="$LAB_ROOT/bin"
+RAW_ARTIFACTS="$LAB_ROOT/raw-artifacts"
 
 K3S_CHANNEL="${K3S_CHANNEL:-stable}"
 ETCD_VERSION="${ETCD_VERSION:-v3.5.21}"
@@ -46,7 +47,7 @@ kubectl_lab() {
   "${KUBECTL_CMD[@]}" "$@"
 }
 
-mkdir -p "$ARTIFACTS" "$WORK" "$BIN"
+mkdir -p "$ARTIFACTS" "$WORK" "$BIN" "$RAW_ARTIFACTS"
 
 # Record migration scope for verification alignment
 printf '%s\n' "$MIGRATION_PREFIX" > "$ARTIFACTS/migration-prefix.txt"
@@ -225,7 +226,8 @@ snapshot_k3s_etcd() {
   sha256sum "$snapshot" > "$ARTIFACTS/k3s-snapshot.sha256"
 
   if [[ "$UPLOAD_RAW_ETCD_ARTIFACTS" == "true" ]]; then
-    cp "$snapshot" "$ARTIFACTS/k3s-embedded-etcd.snapshot.db"
+    mkdir -p "$RAW_ARTIFACTS"
+    cp "$snapshot" "$RAW_ARTIFACTS/k3s-embedded-etcd.snapshot.db"
   fi
 }
 

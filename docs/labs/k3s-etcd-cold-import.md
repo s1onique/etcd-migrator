@@ -209,6 +209,59 @@ make lab-k3s-etcd-cold-import
 
 Navigate to the Actions tab and select "Lab - k3s etcd cold import" → "Run workflow".
 
+## Artifact Verifier
+
+The lab includes a deterministic artifact verifier that validates the proof artifacts after the lab runs.
+
+### Verifier CLI
+
+```bash
+# Verify a downloaded artifact directory
+bash scripts/verify_k3s_etcd_cold_import_artifact.sh <artifact-dir>
+
+# Run self-test (verifies pass/fail fixtures)
+bash scripts/verify_k3s_etcd_cold_import_artifact.sh --self-test
+```
+
+### Close Signal
+
+The verifier confirms successful migration when:
+
+| Check | Required Value |
+|-------|----------------|
+| `migration_prefix` | `/registry/` |
+| `keysets_match` | `true` |
+| `kv_match` | `true` |
+| Source/target KV hash | Equal (first field only) |
+| `key-diff.txt` | Empty |
+| All required JSON files | Valid JSON |
+
+### What the Verifier Checks
+
+1. **Required files exist**: `compare-status.json`, `migration-prefix.txt`, `source-kv-sha256.txt`, `target-kv-sha256.txt`, `k3s-snapshot-status.json`, `target-endpoint-status-after.json`, `key-counts.txt`, `key-diff.txt`, `source-non-migrated-keys.txt`
+
+2. **JSON validity**: All JSON files are parseable
+
+3. **Migration prefix**: Must be `/registry/`
+
+4. **Match booleans**: `keysets_match` and `kv_match` must both be `true`
+
+5. **Hash equality**: Source and target KV hashes (first field only, ignoring filename)
+
+6. **Key diff empty**: No diff output means source and target key sets are identical
+
+7. **Safe artifact exclusions**: Raw snapshots, dumps, and KV exports must NOT be present
+
+### Raw Artifact Safety
+
+The verifier enforces these safety rules:
+
+- **No raw etcd snapshots** (`.db` files, `*snapshot*` files except `k3s-snapshot-status.json` and `k3s-snapshot.sha256`)
+- **No raw migrator dumps** (`*dump*`, `*.jsonl`)
+- **No raw KV exports** (`source.kv.tsv`, `target.kv.tsv`)
+
+Raw snapshot upload remains opt-in via the `upload_raw_etcd_artifacts` workflow input.
+
 ## References
 
 - [GitHub: Manually running a workflow](https://docs.github.com/actions/managing-workflow-runs/manually-running-a-workflow)

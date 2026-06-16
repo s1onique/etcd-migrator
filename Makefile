@@ -1,10 +1,14 @@
-.PHONY: test gate fmt-check vet build clean lab-k3s-etcd-cold-import
+.PHONY: test gate fmt-check vet build clean lab-k3s-etcd-cold-import verify-artifact
 
 test:
 	go test ./...
 
-gate: vet fmt-check test
+gate: vet fmt-check test verify-artifact
 	@echo "✓ Quality gate passed"
+
+verify-artifact:
+	@echo "Running artifact verifier self-test..."
+	@bash scripts/verify_k3s_etcd_cold_import_artifact.sh --self-test
 
 lab-k3s-etcd-cold-import:
 	@echo "This lab requires root because k3s installs system services."
