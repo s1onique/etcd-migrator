@@ -52,11 +52,32 @@ jobs:
         run: |
           set -eu
 
-          test -x "dist/package/${BIN_NAME}"
-          file "dist/package/${BIN_NAME}" | tee dist/package/file.txt
+          binary="dist/package/${BIN_NAME}"
+
+          test -x "${binary}"
+          file "${binary}" | tee dist/package/file.txt
           grep -q "ELF 64-bit" dist/package/file.txt
           grep -Eq "x86-64|x86_64|AMD x86-64" dist/package/file.txt
-          "dist/package/${BIN_NAME}" --help >/dev/null
+
+          set +e
+          "${binary}" version >/tmp/etcd-migrator-smoke.out 2>/tmp/etcd-migrator-smoke.err
+          smoke_rc=$?
+          set -e
+
+          case "${smoke_rc}" in
+            0)
+              echo "Binary executed successfully; exit=${smoke_rc}"
+              cat /tmp/etcd-migrator-smoke.out
+              ;;
+            *)
+              echo "Binary smoke check failed; exit=${smoke_rc}"
+              echo "stdout:"
+              cat /tmp/etcd-migrator-smoke.out || true
+              echo "stderr:"
+              cat /tmp/etcd-migrator-smoke.err || true
+              exit "${smoke_rc}"
+              ;;
+          esac
 
       - name: Create checksum and tarball
         run: |

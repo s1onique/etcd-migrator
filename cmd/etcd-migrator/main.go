@@ -22,7 +22,7 @@ func main() {
 	}
 
 	switch os.Args[1] {
-	case "version":
+	case "version", "--version", "-v":
 		fmt.Println(version.String())
 		return
 	case "dump":
