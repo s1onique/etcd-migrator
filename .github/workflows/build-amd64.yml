@@ -1,0 +1,73 @@
+name: Build amd64 binary
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux-amd64:
+    name: Build linux/amd64
+    runs-on: ubuntu-latest
+
+    env:
+      BIN_NAME: etcd-migrator
+      GOOS: linux
+      GOARCH: amd64
+      CGO_ENABLED: "0"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build linux/amd64 binary
+        run: |
+          set -eu
+
+          mkdir -p dist/package
+
+          go build \
+            -trimpath \
+            -ldflags="-s -w" \
+            -o "dist/package/${BIN_NAME}" \
+            ./cmd/etcd-migrator
+
+          chmod 0755 "dist/package/${BIN_NAME}"
+
+      - name: Verify binary
+        run: |
+          set -eu
+
+          test -x "dist/package/${BIN_NAME}"
+          file "dist/package/${BIN_NAME}"
+          "dist/package/${BIN_NAME}" --help >/dev/null 2>&1 || true
+
+      - name: Create checksum and tarball
+        run: |
+          set -eu
+
+          cd dist/package
+          sha256sum "${BIN_NAME}" > sha256sums.txt
+          tar -czf "../${BIN_NAME}_linux_amd64.tar.gz" "${BIN_NAME}" sha256sums.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: etcd-migrator-linux-amd64-${{ github.sha }}
+          path: dist/etcd-migrator_linux_amd64.tar.gz
+          if-no-files-found: error
+          retention-days: 14
